@@ -1,6 +1,6 @@
-# ----------------------------
-# Python general ignores
-# ----------------------------
+# ============================================
+# 🔹 PYTHON & GENERAL
+# ============================================
 __pycache__/
 *.pyc
 *.pyo
@@ -10,31 +10,38 @@ __pycache__/
 *.tmp
 *.bak
 
-# Virtual environments
+# ============================================
+# 🔹 ENVIRONMENTS
+# ============================================
 .env
 .venv
 env/
 venv/
+yolov8env/
 
-# IDE and OS files
+# ============================================
+# 🔹 IDE / SYSTEM FILES
+# ============================================
 .vscode/
 .idea/
 .DS_Store
 Thumbs.db
 
-# ----------------------------
-# Data files
-# ----------------------------
-# Large datasets and processed outputs
+# ============================================
+# 🔹 DATA & DATASETS
+# ============================================
+data/fraud_dataset/
 processed_output/
-raw_datset/
+raw_dataset/
 *.npy
 *.csv
 *.json
-*.yaml
 *.xml
+*.yaml
 
-# Image and video data
+# ============================================
+# 🔹 IMAGES / VIDEOS (LARGE ASSETS)
+# ============================================
 *.jpg
 *.jpeg
 *.png
@@ -43,9 +50,9 @@ raw_datset/
 *.mp4
 *.avi
 
-# ----------------------------
-# Model and checkpoints
-# ----------------------------
+# ============================================
+# 🔹 YOLO & MODEL WEIGHTS
+# ============================================
 *.pt
 *.pth
 *.h5
@@ -54,21 +61,21 @@ raw_datset/
 *.pb
 *.weights
 checkpoints/
-models/
+runs/
+models/yolo_fraud/**/weights/
 
-# ----------------------------
-# Temporary / cache directories
-# ----------------------------
+# ============================================
+# 🔹 TEMP / CACHE / OUTPUT
+# ============================================
 tmp/
 cache/
 logs/
 output/
-runs/
 results/
 
-# ----------------------------
-# Misc
-# ----------------------------
+# ============================================
+# 🔹 ARCHIVES & EXECUTABLES
+# ============================================
 *.zip
 *.tar
 *.gz
