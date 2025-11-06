@@ -1,0 +1,78 @@
+# ----------------------------
+# Python general ignores
+# ----------------------------
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.pkl
+*.log
+*.tmp
+*.bak
+
+# Virtual environments
+.env
+.venv
+env/
+venv/
+
+# IDE and OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# ----------------------------
+# Data files
+# ----------------------------
+# Large datasets and processed outputs
+processed_output/
+raw_datset/
+*.npy
+*.csv
+*.json
+*.yaml
+*.xml
+
+# Image and video data
+*.jpg
+*.jpeg
+*.png
+*.bmp
+*.gif
+*.mp4
+*.avi
+
+# ----------------------------
+# Model and checkpoints
+# ----------------------------
+*.pt
+*.pth
+*.h5
+*.onnx
+*.tflite
+*.pb
+*.weights
+checkpoints/
+models/
+
+# ----------------------------
+# Temporary / cache directories
+# ----------------------------
+tmp/
+cache/
+logs/
+output/
+runs/
+results/
+
+# ----------------------------
+# Misc
+# ----------------------------
+*.zip
+*.tar
+*.gz
+*.7z
+*.exe
+*.dll
+*.so
