@@ -1,7 +1,11 @@
 # AI-OCR-Document-Verification
 An AI-powered Optical Character Recognition (OCR) and document verification system using Azure Document Intelligence and Azure OpenAI. This project automatically extracts and validates data from scanned Aadhaar cards and other ID documents.
+[![Python](https://img.shields.io/badge/Python-3.10%2B-blue.svg)]()
+[![YOLOv8](https://img.shields.io/badge/YOLOv8-Ultralytics-orange.svg)]()
+[![Streamlit](https://img.shields.io/badge/Streamlit-App-red.svg)]()
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-# AI-OCR Document Verification — Full Setup & Run Guide (PowerShell)
+Full Setup & Run Guide (PowerShell)
 
 This guide fully automates the setup, training, and running of your **AI-OCR Document Fraud Detection System** using YOLOv8 and Streamlit — all from Windows PowerShell.
 
