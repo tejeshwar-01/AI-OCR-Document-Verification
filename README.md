@@ -192,3 +192,12 @@ After successful setup and execution, your system will:
 | 🧠 **Model Used** | YOLOv8n (fine-tuned on fraud detection dataset) |
 | 📦 **Weights Path** | `models/yolo_fraud/fraud_gpu/weights/best.pt` |
 | ⚙️ **Classes** | `['aadhaar', 'pan', 'cheque', 'other']` |
+
+
+---
+
+### 5. **Add a demo video later**
+You can record a 30-second screen capture showing:
+- The Streamlit app running  
+- YOLO predictions happening live  
+
