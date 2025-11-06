@@ -200,4 +200,7 @@ After successful setup and execution, your system will:
 You can record a 30-second screen capture showing:
 - The Streamlit app running  
 - YOLO predictions happening live  
+## 🧩 Demo
+![Streamlit UI](docs/streamlit_ui.png)
+![YOLO Detection Output](docs/yolo_output.png)
 
