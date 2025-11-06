@@ -1,3 +1,4 @@
+# type setup_yoloov8.ps1 in powershell to install whole project and run 
 # =====================================================
 # 🧠 YOLOv8 + GPU Setup Script for Windows (RTX 4050)
 # Author: ChatGPT
