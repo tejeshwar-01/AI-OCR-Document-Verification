@@ -265,8 +265,8 @@ Spreadsheet-friendly format with:
 
 ## Project By
 
-- **Maddineni Kinshuk**
-- **Contact: kinshuk.maddineni@gmail.com**
+- **M.R.TejeshwarReddy**
+- **Contact: tejeshwarreddy2424@gmail.com**
 
 ## 📄 License
 
