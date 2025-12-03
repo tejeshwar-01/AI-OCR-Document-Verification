@@ -27,7 +27,7 @@
 /* =========================
    Global config + state
    ========================= */
-const API_BASE_URL = window.location.origin;
+const API_BASE_URL = "https://ai-ocr-document-verification-production.up.railway.app";
 let currentMode = 'single';
 
 /* =========================
