@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Contact - Aadhaar Authentication</title>
+
+    <!-- FIX FLICKER -->
+    <script>
+        (function () {
+            if (localStorage.getItem("theme") === "dark") {
+                document.documentElement.classList.add("dark");
+            }
+        })();
+    </script>
+
+    <link rel="stylesheet" href="css/style.css" />
+</head>
+
+<body>
+
+    <header>
+        <h1 class="logo">Aadhaar Authentication</h1>
+
+        <div class="header-right">
+            <nav>
+                <a href="index.html">Home</a>
+                <a href="about.html">About</a>
+                <a href="services.html">Services</a>
+                <a href="contact.html" class="active">Contact</a>
+            </nav>
+
+            <!-- FIXED THEME TOGGLE -->
+            <div class="theme-toggle">
+                <button id="themeBtn" class="theme-btn">🌙</button>
+
+                <div id="themeMenu" class="theme-menu hidden">
+                    <div class="theme-option" data-theme="light">☀️ Light Mode</div>
+                    <div class="theme-option" data-theme="dark">🌙 Dark Mode</div>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <section class="contact">
+        <h2>Contact Us</h2>
+        <p>Have questions or feedback? Get in touch with us below.</p>
+
+        <form id="contactForm">
+            <input type="text" id="name" placeholder="Your Name" required />
+            <input type="email" id="email" placeholder="Your Email" required />
+            <textarea id="message" placeholder="Your Message" required></textarea>
+            <button type="submit">Send Message</button>
+        </form>
+
+        <div id="formResponse"></div>
+    </section>
+
+    <footer>
+        <p>© 2025 Aadhaar Authentication | All Rights Reserved.</p>
+    </footer>
+
+    <script src="js/script.js"></script>
+</body>
+
+</html>

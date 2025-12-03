@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Services - Aadhaar Authentication</title>
+
+    <!-- FIX FLICKER -->
+    <script>
+        (function () {
+            if (localStorage.getItem("theme") === "dark") {
+                document.documentElement.classList.add("dark");
+            }
+        })();
+    </script>
+
+    <link rel="stylesheet" href="css/style.css" />
+</head>
+
+<body>
+
+    <!-- HEADER -->
+    <header>
+        <h1 class="logo">Aadhaar Authentication</h1>
+
+        <div class="header-right">
+            <nav>
+                <a href="index.html">Home</a>
+                <a href="about.html">About</a>
+                <a href="services.html" class="active">Services</a>
+                <a href="contact.html">Contact</a>
+            </nav>
+
+            <!-- FIXED THEME TOGGLE -->
+            <div class="theme-toggle">
+                <button id="themeBtn" class="theme-btn">🌙</button>
+
+                <div id="themeMenu" class="theme-menu hidden">
+                    <div class="theme-option" data-theme="light">☀️ Light Mode</div>
+                    <div class="theme-option" data-theme="dark">🌙 Dark Mode</div>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- MAIN CONTENT -->
+    <main class="main-content">
+
+        <!-- SERVICES INTRO -->
+        <section class="services-intro">
+            <h2>Our Aadhaar Verification Services</h2>
+
+            <p>
+                Choose from our range of verification services to ensure the authenticity of Aadhaar documents.
+                Our system automatically detects if uploaded images are valid Aadhaar cards.
+            </p>
+        </section>
+
+        <!-- SERVICE CARDS -->
+        <div class="service-cards">
+
+            <div class="service-card" data-service="single">
+                <div class="service-icon">🔍</div>
+                <h3>Single Verification</h3>
+                <p>Verify individual Aadhaar cards with detailed analysis and fraud detection.</p>
+                <button class="btn">Select</button>
+            </div>
+
+            <div class="service-card" data-service="batch">
+                <div class="service-icon">📦</div>
+                <h3>Batch Verification</h3>
+                <p>Process multiple Aadhaar cards at once with our efficient batch processing.</p>
+                <button class="btn">Select</button>
+            </div>
+
+        </div>
+
+        <!-- UPLOAD SECTION -->
+        <section class="upload-section" id="uploadSection" style="display: none;">
+
+            <h3 id="uploadTitle">Single Aadhaar Verification</h3>
+            <p id="uploadDescription">
+                Upload Aadhaar card images for verification.
+                Our system automatically detects if the uploaded image is actually an Aadhaar card.
+            </p>
+
+            <div class="service-buttons">
+                <button id="singleBtn" class="btn active">Single Verification</button>
+                <button id="batchBtn" class="btn">Batch Verification</button>
+            </div>
+
+            <form id="verifyForm">
+
+                <!-- SINGLE UPLOAD -->
+                <div id="singleUpload">
+                    <div class="form-group">
+                        <label for="front">Aadhaar Front Image (JPG/PNG) *</label>
+                        <input type="file" id="front" name="front" accept=".jpg,.jpeg,.png" required />
+                        <p class="note">Upload a clear image of the front side of Aadhaar card.</p>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="back">Aadhaar Back Image (Optional)</label>
+                        <input type="file" id="back" name="back" accept=".jpg,.jpeg,.png" />
+                        <p class="note">Back side contains QR code and address.</p>
+                    </div>
+                </div>
+
+                <!-- BATCH UPLOAD -->
+                <div id="batchUpload" style="display: none;">
+                    <div class="form-group">
+                        <label for="zip">Batch ZIP File *</label>
+                        <input type="file" id="zip" name="zip" accept=".zip" />
+                    </div>
+                    <p class="note">Upload a single ZIP file containing Aadhaar images.</p>
+                </div>
+
+                <!-- QR CHECKBOX -->
+                <div class="form-group" id="qrCheckboxContainer">
+                    <label>
+                        <input type="checkbox" name="qr" value="true">
+                        Enable QR Code Check
+                    </label>
+                </div>
+
+                <button type="submit" class="btn">Run Verification</button>
+            </form>
+
+            <div class="loader" id="loadingSpinner"></div>
+        </section>
+
+        <!-- RESULTS AREA -->
+        <h3 style="margin-top: 40px;">Verification Results</h3>
+
+        <div id="verificationResults" class="result-container">
+            <p id="defaultResultMessage">
+                Select a service and upload files to see verification results.
+            </p>
+        </div>
+
+    </main>
+
+    <!-- MODAL -->
+    <div id="resultModal" class="modal">
+        <div class="modal-content-wrapper">
+            <span class="close-btn" id="closeModal">&times;</span>
+            <div id="modalContent"></div>
+        </div>
+    </div>
+
+    <!-- FOOTER -->
+    <footer>
+        <p>© 2025 Aadhaar Authentication | All Rights Reserved.</p>
+    </footer>
+
+    <script src="js/script.js"></script>
+
+</body>
+
+</html>

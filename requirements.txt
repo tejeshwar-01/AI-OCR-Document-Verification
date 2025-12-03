@@ -1,0 +1,23 @@
+# Core server
+flask
+flask-cors
+gunicorn
+
+# Image processing
+pillow
+pytesseract
+opencv-python-headless==4.8.1.78  # ✅ smaller, stable build
+pyzbar
+
+# Numeric + data utils
+numpy==1.26.4
+pandas==2.2.2
+python-dateutil
+
+# Aadhaar utilities
+pyaadhaar==1.1.3
+
+# Lightweight YOLO setup
+ultralytics==8.1.0
+torch==2.1.0+cpu  # ✅ CPU-only PyTorch (no CUDA)
+--extra-index-url https://download.pytorch.org/whl/cpu

@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+    <title>Aadhaar Authentication - Home</title>
+
+    <!-- PREVENT FLASH -->
+    <script>
+        (function () {
+            if (localStorage.getItem("theme") === "dark") {
+                document.documentElement.classList.add("dark");
+            }
+        })();
+    </script>
+
+    <link rel="stylesheet" href="css/style.css" />
+</head>
+
+<body>
+
+    <!-- HEADER -->
+    <header>
+        <h1 class="logo">Aadhaar Authentication</h1>
+
+        <div class="header-right">
+            <nav>
+                <a href="index.html" class="active">Home</a>
+                <a href="about.html">About</a>
+                <a href="services.html">Services</a>
+                <a href="contact.html">Contact</a>
+            </nav>
+
+            <!-- ✅ FIXED THEME TOGGLE -->
+            <div class="theme-toggle">
+                <button id="themeBtn" class="theme-btn">🌙</button>
+
+                <div id="themeMenu" class="theme-menu hidden">
+                    <div class="theme-option" data-theme="light">☀️ Light Mode</div>
+                    <div class="theme-option" data-theme="dark">🌙 Dark Mode</div>
+                </div>
+            </div>
+            <!-- END TOGGLE -->
+        </div>
+    </header>
+
+    <!-- MAIN CONTENT -->
+    <main class="main-content">
+
+        <!-- HERO SECTION -->
+        <section class="hero">
+            <h2>AI-Powered Aadhaar Verification</h2>
+            <p>Fast, accurate Aadhaar verification combining YOLO detection, OCR and rule-based checks.</p>
+            <a href="services.html" class="btn">Start Verification</a>
+        </section>
+
+        <!-- FEATURES SECTION -->
+        <section class="features">
+            <div>
+                <h3>Instant Checks</h3>
+                <p>Single or batch verification.</p>
+            </div>
+
+            <div>
+                <h3>Rule-Based</h3>
+                <p>Verhoeff checksum, name, DOB, gender checks.</p>
+            </div>
+
+            <div>
+                <h3>Exportable</h3>
+                <p>Download results in CSV or JSON.</p>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- FOOTER -->
+    <footer>
+        <p>© 2025 Aadhaar Authentication | All Rights Reserved.</p>
+    </footer>
+
+    <script src="js/script.js"></script>
+
+</body>
+
+</html>
