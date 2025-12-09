@@ -1,267 +1,304 @@
-# AadhaarVerify - Aadhaar Card Verification System
+📘 Aadhaar Authentication – Aadhaar Card Verification System
 
-A comprehensive web-based solution for automated Aadhaar card verification, fraud detection, and batch processing with detailed reporting capabilities.
+A comprehensive web-based solution for automated Aadhaar card verification, fraud detection, OCR extraction, and batch processing with detailed analytics and reporting.
 
-## 🚀 Features
+🚀 Features
+✔️ Core Verification
 
-### Core Verification
+Single Aadhaar Verification – Analyze one card with detailed field extraction
 
-- **Single Aadhaar Verification**: Individual card analysis with detailed fraud detection
-- **Batch Processing**: Process multiple Aadhaar cards simultaneously
-- **Automatic Aadhaar Detection**: Smart detection of valid Aadhaar card images
-- **QR Code Verification**: Secure QR code decoding and validation
-- **Multi-factor Fraud Detection**: Comprehensive risk assessment
+Batch Processing – Verify multiple Aadhaar cards at once (ZIP upload)
 
-### Technical Capabilities
+Automatic Aadhaar Detection – YOLO-based card & field detection
 
-- **OCR Text Extraction**: Advanced text recognition from Aadhaar cards
-- **Face Detection**: Automated face detection on card photos
-- **Data Validation**: Verhoeff algorithm validation for Aadhaar numbers
-- **Risk Scoring**: Intelligent fraud scoring system
-- **Image Processing**: Automated image enhancement and analysis
+QR Code Verification – Decode Aadhaar QR and cross-validate extracted fields
 
-### Reporting & Export
+Multi-Factor Fraud Detection – Consistency checks + risk scoring
 
-- **Detailed Reports**: Comprehensive verification results
-- **Multiple Formats**: JSON and CSV export options
-- **Batch Summaries**: Aggregated results for multiple files
-- **Risk Analysis**: Detailed risk breakdown and scoring
+✔️ Technical Capabilities
 
-## 🛠️ Technology Stack
+OCR Text Extraction using Tesseract
 
-### Frontend
+Photo / Face Detection (YOLO / OpenCV)
 
-- **HTML5/CSS3**: Responsive, modern UI with dark theme
-- **JavaScript**: Dynamic client-side functionality
-- **Fetch API**: Asynchronous server communication
+Verhoeff Checksum Validation for Aadhaar numbers
 
-### Backend
+Smart Image Processing – denoise, align, enhance
 
-- **Python Flask**: RESTful API server
-- **YOLO Model**: Object detection for field extraction
-- **Tesseract OCR**: Text recognition engine
-- **OpenCV**: Image processing and analysis
-- **PyAadhaar**: Secure QR code decoding
+JSON & CSV Export
 
-## 📁 Project Structure
+100% Local Processing (no cloud dependency)
 
-```
-aadhaar-verify/
-├── frontend/
-│   ├── index.html          # Homepage
-│   ├── services.html       # Verification services
-│   ├── about.html          # About page
-│   ├── contact.html        # Contact form
-│   ├── css/
-│   │   └── style.css       # Main stylesheet
-│   └── js/
-│       └── script.js       # Client-side functionality
-├── backend/
-│   ├── app.py              # Flask application
-│   ├── utils/
-│   │   ├── processor.py    # Main processing logic
-│   │   ├── verification_rules.py  # Validation rules
-│   │   └── ocr_utils.py    # OCR utilities
-│   └── models/
-│       └── best.pt         # YOLO model file
-└── README.md
-```
+📁 Project Structure (Actual)
+aadhaar-fraud-detection-ai/
+├── analytics.html
+├── about.html
+├── contact.html
+├── dashboard.html
+├── history.html
+├── index.html
+├── login.html
+├── services.html
+├── verify-enhanced.html
+├── css/
+│   └── style.css
+├── js/
+│   └── script.js
+└── backend/
+    ├── app.py
+    ├── load_model.py
+    ├── history.json
+    ├── models/
+    │   └── best.pt
+    └── utils/
+        ├── processor.py
+        ├── verification_rules.py
+        └── ocr_utils.py
 
-## 🚀 Quick Start
+🛠️ Technology Stack
+🖥️ Frontend
 
-### Prerequisites
+HTML5 / CSS3
 
-- Python 3.8+
-- Tesseract OCR
-- Modern web browser
+JavaScript (Vanilla)
 
-### Installation
+Chart.js (Analytics graphs)
 
-1. **Clone the repository**
+SweetAlert2 (UI alerts)
 
-   ```bash
-   git clone <repository-url>
-   cd aadhaar-verify
-   ```
+LocalStorage for verification history
 
-2. **Install Python dependencies**
+⚙️ Backend
 
-   ```bash
-   pip install flask flask-cors ultralytics opencv-python pillow pytesseract pyzbar pyaadhaar
-   ```
+Python (Flask API)
 
-3. **Install Tesseract OCR**
+YOLO (Ultralytics) – Aadhaar detection
 
-   - **Windows**: Download from [UB-Mannheim/tesseract](https://github.com/UB-Mannheim/tesseract/wiki)
-   - **Linux**: `sudo apt-get install tesseract-ocr`
-   - **macOS**: `brew install tesseract`
+OpenCV – Image preprocessing & face detection
 
-4. **Place YOLO model**
-   - Download the trained YOLO model (`best.pt`)
-   - Place it in `backend/models/best.pt`
+Tesseract OCR – Text extraction
 
-### Running the Application
+PyZbar / PyAadhaar – QR decoding
 
-1. **Start the backend server**
+🚀 Quick Start
+1️⃣ Prerequisites
 
-   ```bash
-   python app.py
-   ```
+Python 3.8+
 
-   Server will start at `http://localhost:5000`
+Tesseract OCR installed
 
-2. **Access the application**
-   - Open your web browser
-   - Navigate to `http://localhost:5000`
-   - The frontend will be served automatically
+Working browser
 
-## 📊 Usage Guide
+YOLO model (best.pt) downloaded
 
-### Single Verification
+2️⃣ Install the Project
+Clone the repository:
+git clone <repository-url>
+cd aadhaar-fraud-detection-ai
 
-1. Navigate to **Services** page
-2. Select **Single Verification** card
-3. Upload front Aadhaar image (required)
-4. Optionally upload back image for QR verification
-5. Enable QR code check if needed
-6. Click **Run Verification**
-7. View results and download detailed report
+Install Python dependencies:
+pip install flask flask-cors ultralytics opencv-python pillow pytesseract pyzbar pyaadhaar
 
-### Batch Verification
+Install Tesseract OCR:
+OS	Install
+Windows	Download from: https://github.com/UB-Mannheim/tesseract/wiki
 
-1. Select **Batch Verification** card
-2. Upload ZIP file containing multiple Aadhaar images
-3. Click **Run Verification**
-4. Review batch summary and individual results
-5. Download comprehensive batch report
+Linux	sudo apt-get install tesseract-ocr
+macOS	brew install tesseract
+Place your YOLO model:
+backend/models/best.pt
 
-### Supported File Formats
+▶️ Running the Application
+Start backend:
+cd backend
+python app.py
 
-- **Images**: JPG, JPEG, PNG, BMP, TIFF
-- **Batch**: ZIP archives containing images
-- **Max Size**: 50MB per upload
 
-## 🔍 Verification Process
+This runs at:
 
-The system performs multiple verification steps:
+http://localhost:5000
 
-1. **Aadhaar Card Detection**
+Access frontend:
 
-   - Keyword matching for Aadhaar-specific text
-   - Aspect ratio validation
-   - Image size verification
-   - Confidence scoring
+Open browser → http://localhost:5000
 
-2. **Field Extraction & Validation**
+📊 Usage Guide
+🔹 Single Verification
 
-   - Aadhaar number (with Verhoeff checksum)
-   - Name validation
-   - Date of birth verification
-   - Gender validation
+Go to Services → Single Verification
 
-3. **Fraud Detection**
+Upload front image (required)
 
-   - Face detection on photo
-   - Data consistency checks
-   - QR code cross-validation
-   - Risk scoring algorithm
+Upload back image (optional, for QR check)
 
-4. **Risk Assessment**
-   - **LOW**: All checks passed
-   - **MODERATE**: Minor issues detected
-   - **HIGH**: Significant fraud indicators
+Run verification
 
-## 📋 API Endpoints
+View:
 
-### Verification Endpoints
+Extracted fields
 
-- `POST /api/verify_single` - Single Aadhaar verification
-- `POST /api/verify_batch` - Batch Aadhaar verification
+Fraud score
 
-### Utility Endpoints
+Confidence
 
-- `GET /api/health` - Health check and system status
-- `GET /` - Frontend serving
+Risk classification
 
-## 📁 Export Formats
+Download JSON/CSV
 
-### JSON Export
+🔹 Batch Verification
 
-Complete structured data including:
+Upload ZIP containing multiple Aadhaar images
 
-- Verification metadata
-- Extracted field data
-- Validation results
-- Risk assessments
-- Processing indicators
-- Confidence scores
+Run processor
 
-### CSV Export
+Review:
 
-Spreadsheet-friendly format with:
+Batch summary
 
-- Summary statistics
-- Individual file results
-- Risk classifications
-- Validation status
-- Fraud scores
+Per-file results
 
-## ⚙️ Configuration
+Download combined report
 
-### Environment Setup
+Supported Formats
 
-- **Model Path**: Update `MODEL_PATH` in `app.py` if needed
-- **Tesseract**: Configure path in `ocr_utils.py` for your OS
-- **Device**: CPU/GPU selection in processing functions
+Images: jpg, jpeg, png, bmp, tiff
 
-### Customization
+Batch ZIP: only images inside
 
-- Modify validation rules in `verification_rules.py`
-- Adjust risk scoring in `processor.py`
-- Customize UI themes in `style.css`
+Max upload size: 50MB
 
-## 🛡️ Security & Privacy
+🔍 Verification Workflow
+1️⃣ Aadhaar Card Detection
 
-- Local processing - no data leaves your server
-- Temporary file handling
-- Secure input validation
-- No personal data storage
+YOLO detects Aadhaar region
 
-## 🐛 Troubleshooting
+Text regions identified
 
-### Common Issues
+Card orientation validated
 
-1. **Tesseract not found**
+2️⃣ Field Extraction & Validation
 
-   - Verify Tesseract installation
-   - Check path configuration in `ocr_utils.py`
+Extract Aadhaar number, name, DOB, gender
 
-2. **Model file missing**
+Validate:
 
-   - Ensure `best.pt` is in `backend/models/`
-   - Check file permissions
+Verhoeff checksum
 
-3. **QR decoding errors**
+DOB formatting
 
-   - Ensure back image is clear and properly oriented
-   - Check pyzbar dependencies
+Gender consistency
 
-4. **Memory issues with large batches**
-   - Reduce batch size
-   - Increase server resources
+3️⃣ Fraud Detection
 
-### Logs & Debugging
+Face/photo detection
 
-- Check browser console for client errors
-- Monitor Flask server logs for backend issues
-- Enable debug mode in `app.py` for detailed logging
+OCR vs QR comparison
 
-## 📈 Performance
+Heuristic checks
 
-- **Single Verification**: 2-5 seconds
-- **Batch Processing**: Varies with file count and size
-- **Memory Usage**: Optimized for typical server environments
-- **Concurrency**: Supports multiple simultaneous verifications
+Risk scoring algorithm
+
+4️⃣ Risk Classification
+Level	Meaning
+LOW	All checks passed
+MODERATE	Minor inconsistencies
+HIGH	Potential fraud indicators
+📋 API Endpoints
+Verification
+POST /api/verify_single
+POST /api/verify_batch
+
+Utility
+GET /api/health
+GET /
+
+📁 Export Formats
+JSON Output Includes:
+
+Timestamp
+
+Extracted fields
+
+OCR confidence
+
+Fraud/risk analysis
+
+QR validation status
+
+CSV Output Includes:
+
+Flattened row for each verification
+
+Summary statistics
+
+Risk level & fraud score
+
+⚙️ Configuration
+Model Path
+
+Update in:
+
+backend/app.py
+
+backend/load_model.py
+
+Tesseract Path
+
+Edit:
+
+backend/utils/ocr_utils.py
+
+Custom Logic
+
+Risk rules → verification_rules.py
+
+Fraud scoring → processor.py
+
+UI theme → css/style.css
+
+🛡️ Security & Privacy
+
+No cloud upload
+
+All data processed locally
+
+Temporary files auto-cleaned
+
+No long-term storage unless explicitly implemented
+
+🐛 Troubleshooting
+Issue	Fix
+Tesseract not found	Add to PATH or set in ocr_utils.py
+Model file missing	Ensure best.pt exists in /backend/models/
+QR decode fails	Use higher quality back image
+Analytics shows 0 history	Check LocalStorage: aadhaar_history
+Memory errors	Reduce batch size; process sequentially
+📈 Performance
+
+Single Verification: 2–5 seconds
+
+Batch Verification: depends on images
+
+GPU Support: Faster YOLO inference
+
+🧪 Development Tips
+
+Use Incognito Mode to avoid browser extension interference
+
+Restart Flask after backend edits
+
+Use console logs in both browser and terminal for debugging
+
+🔁 Contributing
+
+Fork repo
+
+Create new branch
+
+Add features/fixes
+
+Submit PR with explanation
+
 
 ## Project By
 
