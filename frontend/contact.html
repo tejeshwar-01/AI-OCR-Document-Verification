@@ -6,7 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Contact - Aadhaar Authentication</title>
 
-    <!-- FIX FLICKER -->
+    <!-- APPLY SAVED THEME BEFORE RENDER -->
     <script>
         (function () {
             if (localStorage.getItem("theme") === "dark") {
@@ -15,53 +15,81 @@
         })();
     </script>
 
+    <!-- ONLY ONE CSS -->
     <link rel="stylesheet" href="css/style.css" />
 </head>
 
 <body>
 
-    <header>
-        <h1 class="logo">Aadhaar Authentication</h1>
+<!-- UNIVERSAL HEADER -->
+<header>
+    <h1 class="logo">Aadhaar Authentication</h1>
 
-        <div class="header-right">
-            <nav>
-                <a href="index.html">Home</a>
-                <a href="about.html">About</a>
-                <a href="services.html">Services</a>
-                <a href="contact.html" class="active">Contact</a>
-            </nav>
+    <div class="header-right">
+        <nav>
+            <a href="index.html" id="nav-home">Home</a>
+            <a href="dashboard.html" id="nav-dashboard">Dashboard</a>
+            <a href="verify-enhanced.html" id="nav-verify">Verify</a>
+            <a href="history.html" id="nav-history">History</a>
+            <a href="analytics.html" id="nav-analytics">Analytics</a>
+            <a href="about.html" id="nav-about">About</a>
+            <a href="services.html" id="nav-services">Services</a>
+            <a href="contact.html" id="nav-contact">Contact</a>
+            <a id="logoutLink" href="#">Logout</a>
+        </nav>
 
-            <!-- FIXED THEME TOGGLE -->
-            <div class="theme-toggle">
-                <button id="themeBtn" class="theme-btn">🌙</button>
-
-                <div id="themeMenu" class="theme-menu hidden">
-                    <div class="theme-option" data-theme="light">☀️ Light Mode</div>
-                    <div class="theme-option" data-theme="dark">🌙 Dark Mode</div>
-                </div>
+        <div class="theme-toggle">
+            <button id="themeBtn" class="theme-btn">🌙</button>
+            <div id="themeMenu" class="theme-menu hidden">
+                <div class="theme-option" data-theme="light">☀️ Light Mode</div>
+                <div class="theme-option" data-theme="dark">🌙 Dark Mode</div>
             </div>
         </div>
-    </header>
+    </div>
+</header>
 
-    <section class="contact">
-        <h2>Contact Us</h2>
-        <p>Have questions or feedback? Get in touch with us below.</p>
+<!-- AUTO-ACTIVE NAV HIGHLIGHT -->
+<script>
+    const page = window.location.pathname.split("/").pop();
 
-        <form id="contactForm">
-            <input type="text" id="name" placeholder="Your Name" required />
-            <input type="email" id="email" placeholder="Your Email" required />
-            <textarea id="message" placeholder="Your Message" required></textarea>
-            <button type="submit">Send Message</button>
-        </form>
+    const navMap = {
+        "index.html": "nav-home",
+        "dashboard.html": "nav-dashboard",
+        "verify-enhanced.html": "nav-verify",
+        "history.html": "nav-history",
+        "analytics.html": "nav-analytics",
+        "about.html": "nav-about",
+        "services.html": "nav-services",
+        "contact.html": "nav-contact"
+    };
 
-        <div id="formResponse"></div>
-    </section>
+    if (navMap[page]) {
+        document.getElementById(navMap[page]).classList.add("active");
+    }
+</script>
 
-    <footer>
-        <p>© 2025 Aadhaar Authentication | All Rights Reserved.</p>
-    </footer>
+<!-- CONTACT SECTION -->
+<section class="contact">
+    <h2>Contact Us</h2>
+    <p>Have questions or feedback? Get in touch with us below.</p>
 
-    <script src="js/script.js"></script>
+    <form id="contactForm">
+        <input type="text" id="name" placeholder="Your Name" required />
+        <input type="email" id="email" placeholder="Your Email" required />
+        <textarea id="message" placeholder="Your Message" required></textarea>
+        <button type="submit" class="btn">Send Message</button>
+    </form>
+
+    <div id="formResponse"></div>
+</section>
+
+<!-- FOOTER -->
+<footer>
+    <p>© 2025 Aadhaar Authentication | All Rights Reserved.</p>
+</footer>
+
+<!-- MAIN JS -->
+<script src="js/script.js"></script>
+
 </body>
-
 </html>
