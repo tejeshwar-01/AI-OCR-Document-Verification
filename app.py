@@ -147,17 +147,29 @@ if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     print(f"🚀 Running on http://127.0.0.1:{port}")
     app.run(host="127.0.0.1", port=port, debug=True)
+
+
+
+import os
 from flask import Flask, jsonify
 from flask_cors import CORS
 
-app = Flask(__name__)
-# Allow your frontend origin (replace with your Netlify URL once ready)
-CORS(app, origins=["*"])  # replace "*" with "https://your-site.netlify.app" for production
+app = Flask(__name__, static_folder="frontend", static_url_path="/")  # modify if different
+# For testing allow all origins; change to your Netlify URL in production
+CORS(app, origins=["*"])
 
-@app.route("/health")
+@app.route("/health", methods=["GET"])
 def health():
     return jsonify({"status": "ok"}), 200
 
-# existing routes and app.run or WSGI app object below...
+# Example: serve index if hitting root (optional)
+@app.route("/")
+def index():
+    try:
+        return app.send_static_file("index.html")
+    except Exception:
+        return jsonify({"message": "frontend not available"}), 200
+
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 8000)))
+    port = int(os.environ.get("PORT", 8000))
+    app.run(host="0.0.0.0", port=port)
