@@ -1,7 +1,7 @@
 import os
 import sys
 import traceback
-from flask import Flask, request, jsonify, send_from_directory, redirect, url_for
+from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 
 # ------------------------------
@@ -27,19 +27,16 @@ except Exception as e:
     print("❌ processor load error:", e)
     print(traceback.format_exc())
 
-# ------------------------------
-# FLASK APP CONFIG
-# ------------------------------
-app = Flask(
-    __name__,
-    static_folder="frontend",
-    static_url_path=""
-)
 
+# ------------------------------
+# FLASK APP (ONLY ONE APP!)
+# ------------------------------
+app = Flask(__name__, static_folder="frontend", static_url_path="")
 CORS(app)
 
-# ------------------------------
-# NO CACHE (IMPORTANT)
+
+# ------------------------------ 
+# NO CACHE 
 # ------------------------------
 @app.after_request
 def no_cache(resp):
@@ -49,22 +46,19 @@ def no_cache(resp):
     return resp
 
 
-# ----------------------------------------------------------
-# AUTO REDIRECT LOGIC
-# FRONTEND sends cookie/localStorage → JS not python
-# So Python cannot read localStorage directly.
-#
-# FIX:
-# We always serve login.html, and JS checks:
-#   if(localStorage.user_name) → redirect to dashboard.html
-# ----------------------------------------------------------
+# ------------------------------
+# HEALTH CHECK (Render uses this)
+# ------------------------------
+@app.route("/health", methods=["GET"])
+def health():
+    return jsonify({"status": "ok"}), 200
 
+
+# ------------------------------
+# ROOT — LOGIN PAGE
+# ------------------------------
 @app.route("/")
 def root():
-    """
-    Always load login.html first.
-    Frontend JS will redirect to dashboard.html if logged in.
-    """
     return send_from_directory(FRONTEND, "login.html")
 
 
@@ -77,7 +71,6 @@ def serve_any(filename):
         resp.headers["Cache-Control"] = "no-store"
         return resp
 
-    # fallback → login page
     return send_from_directory(FRONTEND, "login.html")
 
 
@@ -141,35 +134,10 @@ def api_batch():
 
 
 # ------------------------------
-# RUN SERVER
+# RUN SERVER (LOCAL ONLY)
 # ------------------------------
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     print(f"🚀 Running on http://127.0.0.1:{port}")
-    app.run(host="127.0.0.1", port=port, debug=True)
+    app.run(host="0.0.0.0", port=port, debug=True)
 
-
-
-import os
-from flask import Flask, jsonify
-from flask_cors import CORS
-
-app = Flask(__name__, static_folder="frontend", static_url_path="/")  # modify if different
-# For testing allow all origins; change to your Netlify URL in production
-CORS(app, origins=["*"])
-
-@app.route("/health", methods=["GET"])
-def health():
-    return jsonify({"status": "ok"}), 200
-
-# Example: serve index if hitting root (optional)
-@app.route("/")
-def index():
-    try:
-        return app.send_static_file("index.html")
-    except Exception:
-        return jsonify({"message": "frontend not available"}), 200
-
-if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 8000))
-    app.run(host="0.0.0.0", port=port)
