@@ -1,7 +1,2 @@
-﻿window.API_BASE = "https://aadhaar-fraud-backend.onrender.com";
-window.AppState = {
-  mode: "single",
-  lastSingleResult: null,
-  lastBatchResults: null,
-  debug: false
-};
+﻿const API_BASE_URL = "https://ai-ocr-document-verification-2.onrender.com";
+window.API_BASE_URL = API_BASE_URL;
