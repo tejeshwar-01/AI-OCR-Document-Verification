@@ -147,6 +147,194 @@ def easyocr_crop_to_text(crop_pil):
     except Exception:
         return ""
 
+# -------------------- Option B: Improved OCR helpers for Name, DOB, Gender --------------------
+# These helpers are non-invasive and used only within extraction logic.
+def preprocess_name_crop(pil_img, target_width=1200):
+    """Enhances text area for name OCR (grayscale numpy array)."""
+    try:
+        img = np.array(pil_img.convert("RGB"))[:, :, ::-1]
+        h, w = img.shape[:2]
+        if w < target_width:
+            scale = target_width / float(w)
+            img = cv2.resize(img, None, fx=scale, fy=scale, interpolation=cv2.INTER_CUBIC)
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        clahe = cv2.createCLAHE(clipLimit=2.5, tileGridSize=(8,8))
+        gray = clahe.apply(gray)
+        gray = cv2.medianBlur(gray, 3)
+        th = cv2.adaptiveThreshold(
+            gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+            cv2.THRESH_BINARY, 31, 7
+        )
+        return th
+    except Exception:
+        # fallback to simple grayscale PIL->np
+        try:
+            arr = np.array(pil_img.convert("L"))
+            return arr
+        except Exception:
+            return None
+
+def ocr_name_strict(pil_img):
+    """PSM-7 single-line OCR for best name accuracy. Returns cleaned string."""
+    if not PYTESSERACT_AVAILABLE:
+        return ""
+    try:
+        proc = preprocess_name_crop(pil_img)
+        if proc is None:
+            return ""
+        # convert to PIL L image if numpy array
+        if isinstance(proc, np.ndarray):
+            proc_pil = Image.fromarray(proc)
+        else:
+            proc_pil = pil_img.convert("L")
+        config = (
+            "--psm 7 --oem 3 "
+            "-c tessedit_char_whitelist=ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz. "
+        )
+        # ensure pytesseract available in globals
+        try:
+            txt = pytesseract.image_to_string(proc_pil, config=config)
+        except Exception:
+            # try without config if something breaks
+            txt = pytesseract.image_to_string(proc_pil)
+        txt = txt.strip()
+        txt = re.sub(r"[^A-Za-z.\s]", "", txt)
+        txt = re.sub(r"\s{2,}", " ", txt).strip()
+        return txt
+    except Exception:
+        return ""
+
+def preprocess_dob_crop(pil_img, target_width=800):
+    """Enhance DOB crop (digits and separators)"""
+    try:
+        img = np.array(pil_img.convert("RGB"))[:, :, ::-1]
+        h, w = img.shape[:2]
+        if w < target_width:
+            scale = target_width / float(w)
+            img = cv2.resize(img, None, fx=scale, fy=scale, interpolation=cv2.INTER_CUBIC)
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        gray = cv2.medianBlur(gray, 3)
+        # Use Otsu if background variable
+        _, th = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        return th
+    except Exception:
+        try:
+            return np.array(pil_img.convert("L"))
+        except Exception:
+            return None
+
+def ocr_dob_strict(pil_img):
+    """OCR for DOB: returns a cleaned date string (or empty)."""
+    if not PYTESSERACT_AVAILABLE:
+        return ""
+    try:
+        proc = preprocess_dob_crop(pil_img)
+        if proc is None:
+            return ""
+        proc_pil = Image.fromarray(proc) if isinstance(proc, np.ndarray) else pil_img.convert("L")
+        config = "--psm 7 --oem 3 -c tessedit_char_whitelist=0123456789/-."
+        try:
+            txt = pytesseract.image_to_string(proc_pil, config=config)
+        except Exception:
+            txt = pytesseract.image_to_string(proc_pil)
+        txt = txt.strip()
+        # Normalize separators to '/'
+        txt = re.sub(r"[^\d/.\-]", "", txt)
+        txt = txt.replace(".", "/").replace("-", "/")
+        txt = re.sub(r"\s+", "", txt)
+        # Try to format if plain digits like ddmmyyyy
+        m = re.search(r'(\d{2})/?\.?-?(\d{2})/?\.?-?(\d{4})', txt)
+        if m:
+            return f"{m.group(1)}/{m.group(2)}/{m.group(3)}"
+        return txt
+    except Exception:
+        return ""
+
+def preprocess_gender_crop(pil_img, target_width=600):
+    """Preprocess crop likely containing 'Male'/'Female'."""
+    try:
+        img = np.array(pil_img.convert("RGB"))[:, :, ::-1]
+        h, w = img.shape[:2]
+        if w < target_width:
+            scale = target_width / float(w)
+            img = cv2.resize(img, None, fx=scale, fy=scale, interpolation=cv2.INTER_CUBIC)
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        gray = cv2.medianBlur(gray, 3)
+        _, th = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        return th
+    except Exception:
+        try:
+            return np.array(pil_img.convert("L"))
+        except Exception:
+            return None
+
+def ocr_gender_strict(pil_img):
+    """Return normalized gender string 'Male' or 'Female' or empty."""
+    # prefer fast text search in easyocr/full text first, but we provide strict crop OCR too
+    if EASYOCR_AVAILABLE:
+        try:
+            txt = easyocr_crop_to_text(pil_img)
+            txt_low = txt.lower()
+            if "male" in txt_low:
+                return "Male"
+            if "female" in txt_low:
+                return "Female"
+        except Exception:
+            pass
+    if not PYTESSERACT_AVAILABLE:
+        return ""
+    try:
+        proc = preprocess_gender_crop(pil_img)
+        if proc is None:
+            return ""
+        proc_pil = Image.fromarray(proc) if isinstance(proc, np.ndarray) else pil_img.convert("L")
+        config = "--psm 7 --oem 3 -c tessedit_char_whitelist=ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
+        try:
+            txt = pytesseract.image_to_string(proc_pil, config=config)
+        except Exception:
+            txt = pytesseract.image_to_string(proc_pil)
+        txt_low = txt.lower()
+        if "male" in txt_low:
+            return "Male"
+        if "female" in txt_low:
+            return "Female"
+        # small heuristics: 'm' -> Male, 'f' -> Female if isolated
+        t = re.sub(r"[^A-Za-z]", "", txt_low).strip()
+        if t == "m":
+            return "Male"
+        if t == "f":
+            return "Female"
+        return ""
+    except Exception:
+        return ""
+
+def heuristic_name_crop(full_pil):
+    """Fallback: crop the upper-left region where name is typically located."""
+    w, h = full_pil.size
+    x1 = int(w * 0.05)
+    x2 = int(w * 0.75)
+    y1 = int(h * 0.20)
+    y2 = int(h * 0.34)
+    return full_pil.crop((x1, y1, x2, y2))
+
+def heuristic_dob_crop(full_pil):
+    """Fallback DOB crop: usually under/near name, tune as needed."""
+    w, h = full_pil.size
+    x1 = int(w * 0.05)
+    x2 = int(w * 0.75)
+    y1 = int(h * 0.30)
+    y2 = int(h * 0.42)
+    return full_pil.crop((x1, y1, x2, y2))
+
+def heuristic_gender_crop(full_pil):
+    """Fallback gender crop: often to the right side near DOB."""
+    w, h = full_pil.size
+    x1 = int(w * 0.60)
+    x2 = int(w * 0.90)
+    y1 = int(h * 0.30)
+    y2 = int(h * 0.44)
+    return full_pil.crop((x1, y1, x2, y2))
+
 # ---------- pytesseract helpers ----------
 def pytesseract_image_to_text(pil_image):
     if not PYTESSERACT_AVAILABLE:
@@ -447,12 +635,25 @@ def process_single_image_bytes(front_bytes, back_bytes=None, do_qr_check=False, 
         # 1) If YOLO gave crops, OCR those specific crops.
         if fields.get("aadhaar"):
             extracted_aadhaar = ocr_text_for_label(fields["aadhaar"], "aadhaar")
-        if fields.get("dob"):
-            extracted_dob = ocr_text_for_label(fields["dob"], "dob")
-        if fields.get("gender"):
-            extracted_gender = ocr_text_for_label(fields["gender"], "gender")
+
+        # Use improved strict OCR for name/dob/gender when crop present
         if fields.get("name"):
-            extracted_name = ocr_text_for_label(fields["name"], "name")
+            try:
+                extracted_name = ocr_name_strict(fields["name"])
+            except Exception:
+                extracted_name = ocr_text_for_label(fields["name"], "name")
+
+        if fields.get("dob"):
+            try:
+                extracted_dob = ocr_dob_strict(fields["dob"])
+            except Exception:
+                extracted_dob = ocr_text_for_label(fields["dob"], "dob")
+
+        if fields.get("gender"):
+            try:
+                extracted_gender = ocr_gender_strict(fields["gender"])
+            except Exception:
+                extracted_gender = ocr_text_for_label(fields["gender"], "gender")
 
         # 2) If any field missing, fallback to searching full_text
         if not extracted_aadhaar:
@@ -469,6 +670,35 @@ def process_single_image_bytes(front_bytes, back_bytes=None, do_qr_check=False, 
         if not extracted_name:
             guess = guess_name_from_text(results["ocr_data"].get("full_text", "") or full_text)
             extracted_name = guess or ""
+
+        # Additional fallbacks (Option B): heuristic crops + strict OCR when still missing
+        # These will run only if earlier methods failed
+        if not extracted_name:
+            try:
+                name_crop = heuristic_name_crop(front_image_pil)
+                alt_name = ocr_name_strict(name_crop)
+                if alt_name:
+                    extracted_name = alt_name
+            except Exception:
+                pass
+
+        if not extracted_dob:
+            try:
+                dob_crop = heuristic_dob_crop(front_image_pil)
+                alt_dob = ocr_dob_strict(dob_crop)
+                if alt_dob:
+                    extracted_dob = alt_dob
+            except Exception:
+                pass
+
+        if not extracted_gender:
+            try:
+                gender_crop = heuristic_gender_crop(front_image_pil)
+                alt_gender = ocr_gender_strict(gender_crop)
+                if alt_gender:
+                    extracted_gender = alt_gender
+            except Exception:
+                pass
 
         # 3) Clean & normalize
         if extracted_aadhaar:
