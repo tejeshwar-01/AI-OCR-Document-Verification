@@ -1,6 +1,6 @@
 # 📘 Aadhaar Authentication – Aadhaar Card Verification System
 
-A complete web-based platform for automated Aadhaar card verification, OCR extraction, YOLO-based detection, fraud scoring, and analytics dashboards — all running **100% locally**.
+A complete web-based platform for automated Aadhaar card verification, OCR extraction, YOLO-based detection, fraud scoring, and analytics dashboards.
 
 ---
 
