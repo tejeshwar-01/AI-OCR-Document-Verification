@@ -27,12 +27,11 @@ from backend.utils.verification_rules import (
 from backend.utils.ocr_utils import preprocess_for_ocr, preprocess_for_ocr_full
 
 # ---------- Feature flags & dependency probes ----------
-# YOLO: disabled by default; enable via env ENABLE_YOLO=1 and YOLO_MODEL_PATH=/path/to/model.pt
 ENABLE_YOLO_ENV = os.getenv("ENABLE_YOLO", "0")
 YOLO_ENABLED_REQUESTED = ENABLE_YOLO_ENV in ("1", "true", "True", "yes", "YES")
 
 try:
-    from ultralytics import YOLO  # type: ignore
+    from ultralytics import YOLO
     _ULTRALYTICS_PRESENT = True
 except Exception:
     _ULTRALYTICS_PRESENT = False
@@ -51,7 +50,7 @@ try:
 except Exception:
     PYTESSERACT_AVAILABLE = False
 
-# pyzbar + pyaadhaar for QR
+# QR dependencies
 try:
     from pyzbar.pyzbar import decode as pyzbar_decode
     from pyaadhaar.utils import isSecureQr
@@ -60,6 +59,40 @@ try:
 except Exception:
     PYAADHAAR_AVAILABLE = False
 
+
+# -------------------- FIX A: Improved NAME OCR --------------------
+def clean_name_text(txt):
+    """Remove unwanted characters and normalize spacing."""
+    txt = re.sub(r"[^A-Za-z\s.]", "", txt)
+    txt = re.sub(r"\s{2,}", " ", txt)
+    return txt.strip()
+
+
+def ocr_name_strict_only(pil_img):
+    """
+    Very accurate single-line OCR for Aadhaar NAME field.
+    No extra models needed.
+    """
+    if not PYTESSERACT_AVAILABLE:
+        return ""
+
+    import cv2, numpy as np
+    img = np.array(pil_img.convert("RGB"))[:, :, ::-1]
+
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    gray = cv2.medianBlur(gray, 3)
+    gray = cv2.resize(gray, None, fx=1.8, fy=1.8, interpolation=cv2.INTER_CUBIC)
+
+    proc = Image.fromarray(gray)
+
+    config = "--psm 7 --oem 3 -c tessedit_char_whitelist=ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz. "
+
+    try:
+        txt = pytesseract.image_to_string(proc, config=config)
+    except:
+        txt = pytesseract.image_to_string(proc)
+
+    return clean_name_text(txt)
 # ---------- Sanitizer: make JSON serializable ----------
 def sanitize_value(v):
     if v is None:
@@ -91,7 +124,7 @@ def sanitize_value(v):
     if isinstance(v, (list, tuple)):
         return [sanitize_value(x) for x in v]
     if isinstance(v, dict):
-        return {str(k): sanitize_value(val) for k, val in v.items()}
+        return {str(k): sanitize_json(v) for k, v in v.items()}
     if isinstance(v, (np.bool_,)):
         return bool(v)
     if isinstance(v, (int, float, str, bool)):
@@ -101,6 +134,7 @@ def sanitize_value(v):
     except Exception:
         return None
 
+
 def sanitize_json(obj):
     if isinstance(obj, dict):
         return {str(k): sanitize_json(v) for k, v in obj.items()}
@@ -108,7 +142,8 @@ def sanitize_json(obj):
         return [sanitize_json(v) for v in obj]
     return sanitize_value(obj)
 
-# ---------- EasyOCR reader cache ----------
+
+# ---------- EasyOCR wrapper ----------
 _EASYREADER = None
 def get_easyocr_reader(lang_list=['en'], gpu=False):
     global _EASYREADER
@@ -121,6 +156,7 @@ def get_easyocr_reader(lang_list=['en'], gpu=False):
             _EASYREADER = easyocr.Reader(lang_list, gpu=False)
     return _EASYREADER
 
+
 def easyocr_image_to_text(pil_image):
     if not EASYOCR_AVAILABLE:
         return ""
@@ -128,11 +164,14 @@ def easyocr_image_to_text(pil_image):
         reader = get_easyocr_reader()
         arr = np.array(pil_image.convert("RGB"))
         results = reader.readtext(arr, detail=1)
-        texts = [t[1] if isinstance(t, (list, tuple)) and len(t) > 1 else str(t) for t in results]
-        combined = " ".join(texts).strip()
-        return combined.lower()
+        texts = [
+            t[1] if isinstance(t, (list, tuple)) and len(t) > 1 else str(t)
+            for t in results
+        ]
+        return " ".join(texts).strip().lower()
     except Exception:
         return ""
+
 
 def easyocr_crop_to_text(crop_pil):
     if not EASYOCR_AVAILABLE:
@@ -140,640 +179,458 @@ def easyocr_crop_to_text(crop_pil):
     try:
         reader = get_easyocr_reader()
         arr = np.array(crop_pil.convert("RGB"))
-        res = reader.readtext(arr, detail=0)
-        if isinstance(res, list):
-            return " ".join(res).strip()
-        return str(res).strip()
+        out = reader.readtext(arr, detail=0)
+        if isinstance(out, list):
+            return " ".join(out).strip()
+        return str(out).strip()
     except Exception:
         return ""
 
-# -------------------- Option B: Improved OCR helpers for Name, DOB, Gender --------------------
-# These helpers are non-invasive and used only within extraction logic.
-def preprocess_name_crop(pil_img, target_width=1200):
-    """Enhances text area for name OCR (grayscale numpy array)."""
-    try:
-        img = np.array(pil_img.convert("RGB"))[:, :, ::-1]
-        h, w = img.shape[:2]
-        if w < target_width:
-            scale = target_width / float(w)
-            img = cv2.resize(img, None, fx=scale, fy=scale, interpolation=cv2.INTER_CUBIC)
-        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        clahe = cv2.createCLAHE(clipLimit=2.5, tileGridSize=(8,8))
-        gray = clahe.apply(gray)
-        gray = cv2.medianBlur(gray, 3)
-        th = cv2.adaptiveThreshold(
-            gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-            cv2.THRESH_BINARY, 31, 7
-        )
-        return th
-    except Exception:
-        # fallback to simple grayscale PIL->np
-        try:
-            arr = np.array(pil_img.convert("L"))
-            return arr
-        except Exception:
-            return None
 
+# ---------- DOB, Gender OCR (original strict versions) ----------
 def ocr_name_strict(pil_img):
-    """PSM-7 single-line OCR for best name accuracy. Returns cleaned string."""
-    if not PYTESSERACT_AVAILABLE:
-        return ""
-    try:
-        proc = preprocess_name_crop(pil_img)
-        if proc is None:
-            return ""
-        # convert to PIL L image if numpy array
-        if isinstance(proc, np.ndarray):
-            proc_pil = Image.fromarray(proc)
-        else:
-            proc_pil = pil_img.convert("L")
-        config = (
-            "--psm 7 --oem 3 "
-            "-c tessedit_char_whitelist=ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz. "
-        )
-        # ensure pytesseract available in globals
-        try:
-            txt = pytesseract.image_to_string(proc_pil, config=config)
-        except Exception:
-            # try without config if something breaks
-            txt = pytesseract.image_to_string(proc_pil)
-        txt = txt.strip()
-        txt = re.sub(r"[^A-Za-z.\s]", "", txt)
-        txt = re.sub(r"\s{2,}", " ", txt).strip()
-        return txt
-    except Exception:
-        return ""
+    """Old strict OCR (kept for compatibility)."""
+    return ocr_name_strict_only(pil_img)
+
 
 def preprocess_dob_crop(pil_img, target_width=800):
-    """Enhance DOB crop (digits and separators)"""
     try:
         img = np.array(pil_img.convert("RGB"))[:, :, ::-1]
         h, w = img.shape[:2]
         if w < target_width:
-            scale = target_width / float(w)
-            img = cv2.resize(img, None, fx=scale, fy=scale, interpolation=cv2.INTER_CUBIC)
+            sc = target_width / float(w)
+            img = cv2.resize(img, None, fx=sc, fy=sc, interpolation=cv2.INTER_CUBIC)
+
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         gray = cv2.medianBlur(gray, 3)
-        # Use Otsu if background variable
         _, th = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
         return th
     except Exception:
         try:
             return np.array(pil_img.convert("L"))
-        except Exception:
+        except:
             return None
 
+
 def ocr_dob_strict(pil_img):
-    """OCR for DOB: returns a cleaned date string (or empty)."""
     if not PYTESSERACT_AVAILABLE:
         return ""
     try:
         proc = preprocess_dob_crop(pil_img)
         if proc is None:
             return ""
-        proc_pil = Image.fromarray(proc) if isinstance(proc, np.ndarray) else pil_img.convert("L")
+        proc_pil = Image.fromarray(proc)
+
         config = "--psm 7 --oem 3 -c tessedit_char_whitelist=0123456789/-."
-        try:
-            txt = pytesseract.image_to_string(proc_pil, config=config)
-        except Exception:
-            txt = pytesseract.image_to_string(proc_pil)
-        txt = txt.strip()
-        # Normalize separators to '/'
-        txt = re.sub(r"[^\d/.\-]", "", txt)
+        txt = pytesseract.image_to_string(proc_pil, config=config).strip()
+
         txt = txt.replace(".", "/").replace("-", "/")
-        txt = re.sub(r"\s+", "", txt)
-        # Try to format if plain digits like ddmmyyyy
-        m = re.search(r'(\d{2})/?\.?-?(\d{2})/?\.?-?(\d{4})', txt)
-        if m:
-            return f"{m.group(1)}/{m.group(2)}/{m.group(3)}"
-        return txt
-    except Exception:
+        txt = re.sub(r"[^\d/]", "", txt)
+
+        # Format dd/mm/yyyy
+        m = re.search(r'(\d{2})/?(\d{2})/?(\d{4})', txt)
+        return f"{m.group(1)}/{m.group(2)}/{m.group(3)}" if m else txt
+    except:
         return ""
 
+
 def preprocess_gender_crop(pil_img, target_width=600):
-    """Preprocess crop likely containing 'Male'/'Female'."""
     try:
         img = np.array(pil_img.convert("RGB"))[:, :, ::-1]
         h, w = img.shape[:2]
         if w < target_width:
-            scale = target_width / float(w)
-            img = cv2.resize(img, None, fx=scale, fy=scale, interpolation=cv2.INTER_CUBIC)
+            sc = target_width / float(w)
+            img = cv2.resize(img, None, fx=sc, fy=sc, interpolation=cv2.INTER_CUBIC)
+
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         gray = cv2.medianBlur(gray, 3)
         _, th = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
         return th
-    except Exception:
+    except:
         try:
             return np.array(pil_img.convert("L"))
-        except Exception:
+        except:
             return None
 
+
 def ocr_gender_strict(pil_img):
-    """Return normalized gender string 'Male' or 'Female' or empty."""
-    # prefer fast text search in easyocr/full text first, but we provide strict crop OCR too
     if EASYOCR_AVAILABLE:
         try:
-            txt = easyocr_crop_to_text(pil_img)
-            txt_low = txt.lower()
-            if "male" in txt_low:
+            txt = easyocr_crop_to_text(pil_img).lower()
+            if "male" in txt:
                 return "Male"
-            if "female" in txt_low:
+            if "female" in txt:
                 return "Female"
-        except Exception:
+        except:
             pass
+
     if not PYTESSERACT_AVAILABLE:
         return ""
+
     try:
         proc = preprocess_gender_crop(pil_img)
-        if proc is None:
-            return ""
-        proc_pil = Image.fromarray(proc) if isinstance(proc, np.ndarray) else pil_img.convert("L")
+        proc_pil = Image.fromarray(proc)
+
         config = "--psm 7 --oem 3 -c tessedit_char_whitelist=ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
-        try:
-            txt = pytesseract.image_to_string(proc_pil, config=config)
-        except Exception:
-            txt = pytesseract.image_to_string(proc_pil)
-        txt_low = txt.lower()
-        if "male" in txt_low:
+        txt = pytesseract.image_to_string(proc_pil, config=config).lower()
+
+        if "male" in txt:
             return "Male"
-        if "female" in txt_low:
+        if "female" in txt:
             return "Female"
-        # small heuristics: 'm' -> Male, 'f' -> Female if isolated
-        t = re.sub(r"[^A-Za-z]", "", txt_low).strip()
-        if t == "m":
+
+        # fallback m/f
+        letters = re.sub(r"[^a-z]", "", txt)
+        if letters == "m":
             return "Male"
-        if t == "f":
+        if letters == "f":
             return "Female"
         return ""
-    except Exception:
+    except:
         return ""
 
+
+# ---------- Heuristic crops ----------
 def heuristic_name_crop(full_pil):
-    """Fallback: crop the upper-left region where name is typically located."""
     w, h = full_pil.size
-    x1 = int(w * 0.05)
-    x2 = int(w * 0.75)
-    y1 = int(h * 0.20)
-    y2 = int(h * 0.34)
-    return full_pil.crop((x1, y1, x2, y2))
+    return full_pil.crop((int(w*0.05), int(h*0.18), int(w*0.75), int(h*0.33)))
+
 
 def heuristic_dob_crop(full_pil):
-    """Fallback DOB crop: usually under/near name, tune as needed."""
     w, h = full_pil.size
-    x1 = int(w * 0.05)
-    x2 = int(w * 0.75)
-    y1 = int(h * 0.30)
-    y2 = int(h * 0.42)
-    return full_pil.crop((x1, y1, x2, y2))
+    return full_pil.crop((int(w*0.05), int(h*0.30), int(w*0.75), int(h*0.42)))
+
 
 def heuristic_gender_crop(full_pil):
-    """Fallback gender crop: often to the right side near DOB."""
     w, h = full_pil.size
-    x1 = int(w * 0.60)
-    x2 = int(w * 0.90)
-    y1 = int(h * 0.30)
-    y2 = int(h * 0.44)
-    return full_pil.crop((x1, y1, x2, y2))
+    return full_pil.crop((int(w*0.60), int(h*0.30), int(w*0.90), int(h*0.44)))
 
-# ---------- pytesseract helpers ----------
+
+# ---------- pytesseract helper ----------
 def pytesseract_image_to_text(pil_image):
     if not PYTESSERACT_AVAILABLE:
         return ""
     try:
-        arr = np.array(preprocess_for_ocr_full(pil_image) if 'preprocess_for_ocr_full' in globals() else pil_image)
-        # pytesseract expects RGB or grayscale PIL image; pass PIL directly if available
-        pil = pil_image if isinstance(pil_image, Image.Image) else Image.fromarray(arr)
-        text = pytesseract.image_to_string(pil)
-        return text.lower().strip()
-    except Exception:
+        arr = np.array(preprocess_for_ocr_full(pil_image))
+        pil = Image.fromarray(arr)
+        return pytesseract.image_to_string(pil).lower().strip()
+    except:
         return ""
 
-# ---------- YOLO model lazy loader ----------
+
+# ---------- YOLO loader ----------
 _YOLO_MODEL = None
 def get_yolo_model():
     global _YOLO_MODEL
-    if _YOLO_MODEL is not None:
+    if _YOLO_MODEL:
         return _YOLO_MODEL
     if not YOLO_ENABLED_REQUESTED or not _ULTRALYTICS_PRESENT:
         return None
-    model_path = os.getenv("YOLO_MODEL_PATH", "").strip()
-    if not model_path or not os.path.exists(model_path):
-        # no model found
+    path = os.getenv("YOLO_MODEL_PATH", "").strip()
+    if not path or not os.path.exists(path):
         return None
     try:
-        _YOLO_MODEL = YOLO(model_path)
+        _YOLO_MODEL = YOLO(path)
         return _YOLO_MODEL
-    except Exception:
+    except:
         _YOLO_MODEL = None
         return None
 
-# ---------- QR decode ----------
+
+# ---------- QR Decode ----------
 def decode_secure_qr(image_np_bgr):
     if not PYAADHAAR_AVAILABLE:
-        return {"error": "QR decoding disabled - dependencies not available"}
+        return {"error": "QR decoding disabled"}
     try:
         gray = cv2.cvtColor(image_np_bgr, cv2.COLOR_BGR2GRAY)
-        code = pyzbar_decode(gray)
-        if not code:
-            return {"error": "QR Code not found or could not be read"}
-        qrData = code[0].data
-        if isSecureQr(qrData):
-            secure_qr = AadhaarSecureQr(int(qrData))
-            decoded_data = secure_qr.decodeddata()
-            # decoded_data might be dict-like or object; normalize
-            if hasattr(decoded_data, "__dict__"):
-                return dict(decoded_data.__dict__)
-            elif isinstance(decoded_data, dict):
-                return decoded_data
-            else:
-                return {"data": str(decoded_data)}
-        else:
-            return {"error": "QR code is not a valid Secure Aadhaar QR."}
-    except Exception as e:
-        return {"error": f"QR decoding failed: {str(e)}"}
+        codes = pyzbar_decode(gray)
+        if not codes:
+            return {"error": "QR Code not found"}
 
-# ---------- Aadhaar image heuristic ----------
+        raw = codes[0].data
+        if isSecureQr(raw):
+            obj = AadhaarSecureQr(int(raw)).decodeddata()
+            if hasattr(obj, "__dict__"):
+                return dict(obj.__dict__)
+            if isinstance(obj, dict):
+                return obj
+            return {"data": str(obj)}
+        return {"error": "Invalid Secure QR"}
+    except Exception as e:
+        return {"error": str(e)}
+
+
+# ---------- Aadhaar heuristic detection ----------
 def is_aadhaar_image(image_bytes):
     try:
-        image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
-        max_dim = 1400
-        w, h = image.size
-        if max(w, h) > max_dim:
-            scale = max_dim / max(w, h)
-            image = image.resize((int(w * scale), int(h * scale)), Image.Resampling.LANCZOS)
-            w, h = image.size
+        pil = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+        np_img = np.array(pil)
+        w, h = pil.size
 
-        aspect_ratio = (w / h) if h else 0.0
-        aspect_ok = 1.1 <= aspect_ratio <= 2.9
-        size_ok = min(w, h) >= 140
+        # aspect ratio filter
+        aspect = w / h
+        size_ok = min(w, h) >= 150
+        aspect_ok = 1.1 <= aspect <= 2.9
 
-        np_img = np.array(image)
-        sample_h = min(80, max(10, h // 8))
-        avg_top = np.mean(np_img[:sample_h, :, :], axis=(0, 1))
-        orange_hint = bool(avg_top[0] > avg_top[1] * 0.95 and avg_top[0] > avg_top[2] * 0.9)
+        # top-color orange band
+        sample = min(80, h//8)
+        avg = np.mean(np_img[:sample], axis=(0,1))
+        orange = avg[0] > avg[1]*0.95 and avg[0] > avg[2]*0.9
 
-        keywords_found = 0
-        number_found = 0
-        text_snippet = ""
-
-        # Use any available OCR to get text hints
+        # OCR quick hints
         txt = ""
         if EASYOCR_AVAILABLE:
-            txt = easyocr_image_to_text(image)
+            txt = easyocr_image_to_text(pil)
         elif PYTESSERACT_AVAILABLE:
-            txt = pytesseract_image_to_text(image)
+            txt = pytesseract_image_to_text(pil)
         txt = txt or ""
-        text_snippet = txt[:300]
-        keywords = ['aadhaar', 'aadhar', 'uidai', 'government of india', 'dob', 'date of birth', 'male', 'female']
-        keywords_found = sum(1 for k in keywords if k in txt)
-        number_found = len(re.findall(r"\b\d{4}\s?\d{4}\s?\d{4}\b", txt))
 
-        confidence = 0
-        confidence += 35 if aspect_ok else 0
-        confidence += 20 if size_ok else 0
-        confidence += 20 if orange_hint else 0
-        confidence += min(keywords_found * 12, 30)
-        confidence += 25 if number_found > 0 else 0
-        confidence = int(min(100, confidence))
-        is_aadhaar = confidence >= 40
+        keywords = ["aadhaar","aadhar","uidai","dob","male","female"]
+        words = sum(k in txt for k in keywords)
+        nums = len(re.findall(r"\d{4}\s?\d{4}\s?\d{4}", txt))
 
-        details = {
-            "keywords_found": int(keywords_found),
-            "aadhaar_numbers_found": int(number_found),
-            "aspect_ratio_valid": bool(aspect_ok),
-            "size_valid": bool(size_ok),
-            "color_band_detected": bool(orange_hint),
-            "detected_text_snippet": text_snippet
+        score = 0
+        score += 35 if aspect_ok else 0
+        score += 20 if size_ok else 0
+        score += 20 if orange else 0
+        score += min(words*10, 30)
+        score += 20 if nums else 0
+
+        return score >= 40, min(score,100), {
+            "aspect_ok": bool(aspect_ok),
+            "size_ok": bool(size_ok),
+            "orange_band": bool(orange),
+            "keywords_found": words,
+            "numbers_found": nums,
+            "snippet": txt[:250]
         }
-        return bool(is_aadhaar), int(confidence), details
 
     except Exception as e:
         return False, 0, {"error": str(e)}
 
-# ---------- OCR helpers for crops ----------
-def ocr_text_for_label(crop_pil, label=""):
-    # Attempt EasyOCR first, then pytesseract. Preprocess if helper available.
-    if EASYOCR_AVAILABLE:
-        try:
-            pre = preprocess_for_ocr(crop_pil)
-            txt = easyocr_crop_to_text(pre) or ""
-            return txt.strip()
-        except Exception:
-            pass
-    if PYTESSERACT_AVAILABLE:
-        try:
-            pre = preprocess_for_ocr(crop_pil)
-            txt = pytesseract_image_to_text(pre) or ""
-            return txt.strip()
-        except Exception:
-            pass
-    # last resort: plain convert
-    try:
-        return str(crop_pil.convert("L").tobytes()[:0])  # empty fallback
-    except Exception:
-        return ""
 
-# ---------- Strong regex helpers ----------
-AADHAAR_RE = re.compile(r'(\d{4}\s?\d{4}\s?\d{4})')
-DOB_RE = re.compile(r'(\d{2}[\/\-\.\s]\d{2}[\/\-\.\s]\d{4})')
-YEAR_RE = re.compile(r'\b(19|20)\d{2}\b')
+# ---------- Regex helpers ----------
+AADHAAR_RE = re.compile(r"(\d{4}\s?\d{4}\s?\d{4})")
+DOB_RE = re.compile(r"(\d{2}[/-]\d{2}[/-]\d{4})")
 
 def find_aadhaar_in_text(txt):
-    if not txt:
-        return ""
-    m = AADHAAR_RE.search(txt)
+    m = AADHAAR_RE.search(txt or "")
     return m.group(1) if m else ""
 
 def find_dob_in_text(txt):
-    if not txt:
-        return ""
+    txt = txt or ""
     m = DOB_RE.search(txt)
-    if m:
-        return m.group(1)
-    # Try more relaxed patterns (dd mm yyyy)
-    m2 = re.search(r'(\d{2}\s?\d{2}\s?\d{4})', txt)
+    if m: return m.group(1)
+
+    m2 = re.search(r"(\d{2})\s?(\d{2})\s?(\d{4})", txt)
     if m2:
-        s = m2.group(1)
-        # insert slashes
-        return f"{s[0:2]}/{s[2:4]}/{s[4:8]}"
+        return f"{m2.group(1)}/{m2.group(2)}/{m2.group(3)}"
     return ""
 
 def guess_name_from_text(txt):
     if not txt:
         return ""
     lines = [l.strip() for l in txt.splitlines() if l.strip()]
-    # prefer lines that are uppercase or contain 2-4 words and letters-only (with minor chars)
-    candidates = []
+    cands = []
     for ln in lines[:20]:
-        if any(c.isalpha() for c in ln) and len(ln) > 3 and len(ln) < 80:
-            # avoid lines with 'dob', 'male', 'female', 'government'
-            low = ln.lower()
-            if any(skip in low for skip in ['dob', 'date of birth', 'male', 'female', 'government', 'aadhaar', 'uidai']):
-                continue
-            candidates.append(ln)
-    # prefer uppercase lines first
-    for c in candidates:
-        if c.isupper() and len(c.split()) <= 5:
-            return c
-    # fallback to first reasonable candidate
-    return candidates[0] if candidates else ""
+        if (
+            any(c.isalpha() for c in ln)
+            and 3 < len(ln) < 80
+            and not any(s in ln.lower() for s in ["dob","male","female","government","uidai"])
+        ):
+            cands.append(ln)
 
+    for x in cands:
+        if x.isupper() and len(x.split()) <= 5:
+            return x
+    return cands[0] if cands else ""
 # ---------- Main processor (single image) ----------
 def process_single_image_bytes(front_bytes, back_bytes=None, do_qr_check=False, device="cpu"):
     ts = datetime.datetime.now().isoformat()
+
     try:
-        is_aadhaar, aadhaar_confidence, aadhaar_details = is_aadhaar_image(front_bytes)
+        # Aadhaar heuristic
+        is_aadhaar, confidence, info = is_aadhaar_image(front_bytes)
 
         if not is_aadhaar:
-            payload = {
+            return sanitize_json({
                 "error": "NOT_AADHAAR",
                 "message": "The uploaded image does not appear to be an Aadhaar card",
-                "aadhaar_verification": aadhaar_details,
-                "confidence_score": int(aadhaar_confidence),
+                "confidence_score": confidence,
+                "aadhaar_verification": info,
                 "timestamp": ts,
                 "assessment": "INVALID_INPUT"
-            }
-            return sanitize_json(payload)
+            })
 
-        front_image_pil = Image.open(io.BytesIO(front_bytes)).convert("RGB")
-        img_np_rgb = np.array(front_image_pil)
+        # Load image
+        front_pil = Image.open(io.BytesIO(front_bytes)).convert("RGB")
+        img_np_rgb = np.array(front_pil)
         img_np_bgr = cv2.cvtColor(img_np_rgb, cv2.COLOR_RGB2BGR)
 
         results = {
             "timestamp": ts,
             "fraud_score": 0,
-            "indicators": [],
-            "ocr_data": {},
-            "qr_data": {},
             "assessment": "LOW",
-            "confidence_score": int(aadhaar_confidence),
+            "confidence_score": confidence,
+            "ocr_data": {},
+            "indicators": [],
             "extracted": {},
+            "qr_data": {},
             "aadhaar_verification": {
                 "is_aadhaar_card": True,
-                "confidence_score": int(aadhaar_confidence),
-                "verification_details": aadhaar_details
+                "confidence_score": confidence,
+                "verification_details": info
             }
         }
 
-        # YOLO field detection (if enabled & model present)
+        # ---------- YOLO detection ----------
+        fields = {}
         yolo_model = get_yolo_model()
-        fields = {}  # label -> PIL crop
-        if yolo_model is None:
+
+        if not yolo_model:
             results["indicators"].append("⚪ INFO: Field detection (YOLO) disabled in this build.")
         else:
             try:
-                # run detection (use small size inference to reduce memory)
                 preds = yolo_model(img_np_rgb, device=device)
-                # take first result
-                boxes = getattr(preds[0], "boxes", None)
-                names = getattr(preds[0], "names", None) or {}
+                boxes = preds[0].boxes
+                names = preds[0].names
+
                 if boxes is not None:
-                    for b in boxes:
-                        try:
-                            cls = int(b.cls.cpu().numpy()) if hasattr(b, "cls") else int(b.data[5])
-                        except Exception:
-                            cls = int(getattr(b, "cls", 0))
-                        label = str(names.get(cls, cls)) if names is not None else str(cls)
-                        xy = getattr(b, "xyxy", None)
-                        if xy is None:
-                            coords = b.xyxy[0] if hasattr(b, "xyxy") else None
-                        else:
-                            coords = xy[0]
-                        if coords is not None:
-                            x1, y1, x2, y2 = map(int, coords[:4])
-                            # clamp
-                            h, w = img_np_rgb.shape[:2]
-                            x1, x2 = max(0, x1), min(w, x2)
-                            y1, y2 = max(0, y1), min(h, y2)
-                            crop = front_image_pil.crop((x1, y1, x2, y2))
-                            # Normalize common label names
-                            norm_label = label.lower()
-                            if "name" in norm_label:
-                                fields["name"] = crop
-                            elif "dob" in norm_label or "date" in norm_label:
-                                fields["dob"] = crop
-                            elif "gender" in norm_label:
-                                fields["gender"] = crop
-                            elif "aadhaar" in norm_label or "uid" in norm_label or "number" in norm_label:
-                                fields["aadhaar"] = crop
-                            else:
-                                # keep generic
-                                fields[label] = crop
+                    for box in boxes:
+                        cls = int(box.cls.cpu().numpy())
+                        label = names.get(cls, str(cls))
+                        xyxy = box.xyxy[0]
+                        x1, y1, x2, y2 = map(int, xyxy)
+
+                        h, w = img_np_rgb.shape[:2]
+                        x1, x2 = max(0, x1), min(w, x2)
+                        y1, y2 = max(0, y1), min(h, y2)
+
+                        crop = front_pil.crop((x1, y1, x2, y2))
+                        lbl = label.lower()
+
+                        if "name" in lbl:
+                            fields["name"] = crop
+                        elif "dob" in lbl:
+                            fields["dob"] = crop
+                        elif "gender" in lbl:
+                            fields["gender"] = crop
+                        elif "aadhaar" in lbl or "uid" in lbl:
+                            fields["aadhaar"] = crop
+
                 if fields:
-                    results["indicators"].append("✅ LOW: YOLO field detection ran and returned crops.")
+                    results["indicators"].append("✅ LOW: YOLO field detection ran.")
                 else:
-                    results["indicators"].append("⚪ INFO: YOLO ran but no labelled fields detected.")
+                    results["indicators"].append("⚪ INFO: YOLO detected no labelled crops.")
+
             except Exception as e:
                 results["indicators"].append(f"⚠️ YOLO detection error: {str(e)}")
 
-        # Full-image OCR (for heuristics & fallback)
+        # ---------- FULL OCR TEXT ----------
         full_text = ""
         if EASYOCR_AVAILABLE:
-            try:
-                full_text = easyocr_image_to_text(front_image_pil)
-                results["ocr_data"]["full_text"] = full_text
-            except Exception:
-                full_text = ""
+            full_text = easyocr_image_to_text(front_pil)
         elif PYTESSERACT_AVAILABLE:
-            try:
-                full_text = pytesseract_image_to_string(front_image_pil) if False else pytesseract_image_to_text(front_image_pil)
-                results["ocr_data"]["full_text"] = full_text
-            except Exception:
-                full_text = ""
-        else:
-            results["ocr_data"]["full_text"] = ""
+            full_text = pytesseract_image_to_text(front_pil)
 
-        # Face detection info (kept disabled by default)
-        results["indicators"].append("⚪ INFO: Face detection disabled in this build.")
+        results["ocr_data"]["full_text"] = full_text
 
-        # ---------- Extraction logic ----------
         extracted_name = ""
-        extracted_gender = ""
         extracted_dob = ""
+        extracted_gender = ""
         extracted_aadhaar = ""
 
-        # 1) If YOLO gave crops, OCR those specific crops.
+        # ---------- Aadhaar number ----------
         if fields.get("aadhaar"):
-            extracted_aadhaar = ocr_text_for_label(fields["aadhaar"], "aadhaar")
-
-        # Use improved strict OCR for name/dob/gender when crop present
-        if fields.get("name"):
-            try:
-                extracted_name = ocr_name_strict(fields["name"])
-            except Exception:
-                extracted_name = ocr_text_for_label(fields["name"], "name")
-
-        if fields.get("dob"):
-            try:
-                extracted_dob = ocr_dob_strict(fields["dob"])
-            except Exception:
-                extracted_dob = ocr_text_for_label(fields["dob"], "dob")
-
-        if fields.get("gender"):
-            try:
-                extracted_gender = ocr_gender_strict(fields["gender"])
-            except Exception:
-                extracted_gender = ocr_text_for_label(fields["gender"], "gender")
-
-        # 2) If any field missing, fallback to searching full_text
+            extracted_aadhaar = ocr_text_for_label(fields["aadhaar"])
         if not extracted_aadhaar:
-            found = find_aadhaar_in_text(full_text)
-            extracted_aadhaar = found or ""
+            extracted_aadhaar = find_aadhaar_in_text(full_text)
+        extracted_aadhaar = re.sub(r"[^0-9]", "", extracted_aadhaar)
+
+        # ---------- DOB ----------
+        if fields.get("dob"):
+            extracted_dob = ocr_dob_strict(fields["dob"])
         if not extracted_dob:
-            found = find_dob_in_text(full_text)
-            extracted_dob = found or ""
+            extracted_dob = find_dob_in_text(full_text)
+        extracted_dob = extracted_dob.strip()
+
+        # ---------- Gender ----------
+        if fields.get("gender"):
+            extracted_gender = ocr_gender_strict(fields["gender"])
         if not extracted_gender:
             if "male" in full_text:
                 extracted_gender = "Male"
             elif "female" in full_text:
                 extracted_gender = "Female"
+
+        # ---------- NAME (fixed) ----------
+        if fields.get("name"):
+            extracted_name = ocr_name_strict_only(fields["name"])
+
+        # Fallback: Infer from full OCR text
         if not extracted_name:
-            guess = guess_name_from_text(results["ocr_data"].get("full_text", "") or full_text)
-            extracted_name = guess or ""
+            extracted_name = guess_name_from_text(full_text)
 
-        # Additional fallbacks (Option B): heuristic crops + strict OCR when still missing
-        # These will run only if earlier methods failed
+        # Final fallback: heuristic crop
         if not extracted_name:
-            try:
-                name_crop = heuristic_name_crop(front_image_pil)
-                alt_name = ocr_name_strict(name_crop)
-                if alt_name:
-                    extracted_name = alt_name
-            except Exception:
-                pass
+            extracted_name = ocr_name_strict_only(heuristic_name_crop(front_pil))
 
-        if not extracted_dob:
-            try:
-                dob_crop = heuristic_dob_crop(front_image_pil)
-                alt_dob = ocr_dob_strict(dob_crop)
-                if alt_dob:
-                    extracted_dob = alt_dob
-            except Exception:
-                pass
+        # Remove noise like **— , “ , ” , out-of-ASCII**
+        extracted_name = re.sub(r"[^A-Za-z .]", "", extracted_name)
+        extracted_name = re.sub(r"\s{2,}", " ", extracted_name).strip()
 
-        if not extracted_gender:
-            try:
-                gender_crop = heuristic_gender_crop(front_image_pil)
-                alt_gender = ocr_gender_strict(gender_crop)
-                if alt_gender:
-                    extracted_gender = alt_gender
-            except Exception:
-                pass
+        # ---------- Validate fields ----------
+        a_val = validate_aadhaar_number(extracted_aadhaar) or "Invalid"
+        n_val = validate_name(extracted_name) or "Invalid"
+        g_val = validate_gender(extracted_gender) or "Invalid"
+        d_val = validate_dob(extracted_dob) or "Invalid"
 
-        # 3) Clean & normalize
-        if extracted_aadhaar:
-            extracted_aadhaar = re.sub(r'[^0-9]', '', extracted_aadhaar)
-        if extracted_name:
-            extracted_name = correct_common_ocr_errors(extracted_name).strip()
-        if extracted_dob:
-            extracted_dob = correct_common_ocr_errors(extracted_dob).strip()
-
-        # 4) Validation & scoring (weights tuned to match previous behavior)
-        a_val = validate_aadhaar_number(extracted_aadhaar) if extracted_aadhaar else "Missing"
-        n_val = validate_name(extracted_name) if extracted_name else "Missing"
-        g_val = validate_gender(extracted_gender) if extracted_gender else "Missing"
-        d_val = validate_dob(extracted_dob) if extracted_dob else "Missing"
-
-        # Aadhaar scoring (higher weight)
-        if a_val == "Missing":
+        # -- Aadhaar validation
+        if "Invalid" in a_val:
             results["fraud_score"] += 3
-            results["indicators"].append("🔴 HIGH: Aadhaar number is missing.")
-        elif "Invalid" in a_val:
-            results["fraud_score"] += 3
-            results["indicators"].append(f"🔴 HIGH: Aadhaar number '{extracted_aadhaar}' is {a_val}.")
+            results["indicators"].append("🔴 HIGH: Invalid Aadhaar number.")
         else:
             results["indicators"].append("✅ LOW: Aadhaar number extracted.")
 
-        # Name scoring
-        if n_val == "Missing":
-            results["fraud_score"] += 1
-            results["indicators"].append("🟡 MEDIUM: Name is missing.")
-        elif "Invalid" in n_val:
+        # -- Name validation
+        if "Invalid" in n_val:
             results["fraud_score"] += 1
             results["indicators"].append(f"🟡 MEDIUM: Name '{extracted_name}' is {n_val}.")
         else:
             results["indicators"].append("✅ LOW: Name format valid.")
 
-        # DOB scoring
-        if d_val == "Missing":
-            results["fraud_score"] += 1
-            results["indicators"].append("🟡 MEDIUM: DOB is missing.")
-        elif "Invalid" in d_val:
+        # -- DOB validation
+        if "Invalid" in d_val:
             results["fraud_score"] += 2
-            results["indicators"].append(f"🔴 HIGH: DOB '{extracted_dob}' is {d_val}.")
+            results["indicators"].append(f"🔴 HIGH: DOB '{extracted_dob}' invalid.")
         else:
             results["indicators"].append("✅ LOW: DOB format valid.")
 
-        # Gender scoring
-        if g_val == "Missing":
+        # -- Gender validation
+        if "Invalid" in g_val:
             results["fraud_score"] += 1
-            results["indicators"].append("🟡 MEDIUM: Gender is missing.")
-        elif "Invalid" in g_val:
-            results["fraud_score"] += 1
-            results["indicators"].append(f"🟡 MEDIUM: Gender '{extracted_gender}' is {g_val}.")
+            results["indicators"].append(f"🟡 MEDIUM: Gender '{extracted_gender}' invalid.")
         else:
             results["indicators"].append("✅ LOW: Gender format valid.")
 
+        # Store final fields
         results["extracted"] = {
-            "name": extracted_name or "",
-            "dob": extracted_dob or "",
-            "gender": extracted_gender or "",
-            "aadhaar": extracted_aadhaar or ""
+            "name": extracted_name,
+            "dob": extracted_dob,
+            "gender": extracted_gender,
+            "aadhaar": extracted_aadhaar
         }
 
-        # 5) QR verification (optional)
+        # ---------- QR Decode ----------
         if do_qr_check:
-            try:
-                qr_data = decode_secure_qr(img_np_bgr)
-                results["qr_data"] = qr_data
-                if "error" not in qr_data:
-                    results["indicators"].append("✅ LOW: Secure QR Code decoded successfully.")
-                else:
-                    results["indicators"].append(f"⚠️ QR Code: {qr_data.get('error')}")
-            except Exception:
-                results["indicators"].append("⚠️ QR decoding error.")
+            qr = decode_secure_qr(img_np_bgr)
+            results["qr_data"] = qr
+            if "error" not in qr:
+                results["indicators"].append("✅ LOW: Secure QR decoded.")
+            else:
+                results["indicators"].append("⚠️ QR decode failed.")
 
-        # 6) Final assessment
+        # ---------- Final Assessment ----------
         if results["fraud_score"] >= 7:
             results["assessment"] = "HIGH"
         elif results["fraud_score"] >= 3:
@@ -784,32 +641,33 @@ def process_single_image_bytes(front_bytes, back_bytes=None, do_qr_check=False, 
         return sanitize_json(results)
 
     except Exception as e:
-        tb = traceback.format_exc()
-        payload = {
+        return sanitize_json({
             "error": "PROCESSING_FAILED",
             "message": str(e),
-            "traceback": tb,
-            "timestamp": datetime.datetime.now().isoformat()
-        }
-        return sanitize_json(payload)
+            "traceback": traceback.format_exc(),
+            "timestamp": ts
+        })
 
-# ---------- Batch processing ----------
+
+# ---------- Batch ZIP processor ----------
 def process_zip_bytes(zip_bytes, model_path=None, do_qr_check=False, device="cpu", max_files=None):
     out = []
     try:
         with zipfile.ZipFile(io.BytesIO(zip_bytes), "r") as z:
-            members = [n for n in z.namelist() if n.lower().endswith((".jpg", ".jpeg", ".png"))]
+            imgs = [f for f in z.namelist() if f.lower().endswith((".jpg",".jpeg",".png"))]
             if max_files:
-                members = members[:int(max_files)]
-            for name in members:
+                imgs = imgs[:max_files]
+
+            for name in imgs:
                 try:
                     b = z.read(name)
-                    rec = process_single_image_bytes(b, back_bytes=None, do_qr_check=do_qr_check, device=device)
-                    if isinstance(rec, dict):
-                        rec["filename"] = name
-                    out.append(sanitize_json(rec))
+                    res = process_single_image_bytes(b, None, do_qr_check, device)
+                    res["filename"] = name
+                    out.append(res)
                 except Exception as e:
-                    out.append(sanitize_json({"filename": name, "error": str(e)}))
+                    out.append({"filename": name, "error": str(e)})
+
     except Exception as e:
-        out.append(sanitize_json({"error": str(e)}))
+        out.append({"error": str(e)})
+
     return out
