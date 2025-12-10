@@ -214,7 +214,6 @@ def extract_universal_name(full_pil):
     if names:
         return max(names, key=len)
     return ""
-
 # ============================================================
 #  Robust line-based extractor v2 (preferred)
 # ============================================================
@@ -372,7 +371,6 @@ def extract_universal_name_v2(full_pil):
             return extract_universal_name(full_pil)
         except Exception:
             return ""
-
 # ============================================================
 #  Aadhaar heuristic detection
 # ============================================================
@@ -569,7 +567,6 @@ def process_single_image_bytes(front_bytes, back_bytes=None, do_qr_check=False, 
                     results["indicators"].append("⚪ INFO: YOLO ran but no labelled fields detected.")
             except Exception as e:
                 results["indicators"].append(f"⚠️ YOLO detection error: {str(e)}")
-
         # Full-image OCR (for heuristics & fallback)
         full_text = ""
         if PYTESSERACT_AVAILABLE:
