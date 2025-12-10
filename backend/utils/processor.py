@@ -131,57 +131,76 @@ def decode_secure_qr(image_np_bgr):
 # ---------- Aadhaar image heuristic ----------
 def is_aadhaar_image(image_bytes):
     """
-    Heuristic to decide whether image looks like an Aadhaar card.
-    Uses EasyOCR if available, otherwise uses relaxed heuristics.
-    Returns (is_aadhaar_bool, confidence_score_int, details_dict)
+    FIXED VERSION:
+    Aadhaar detection no longer requires OCR.
+    OCR is used only to BOOST confidence, not to determine Aadhaar.
+    This prevents false NOT_AADHAAR results.
     """
+
     try:
         image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
-        # safe downscale
+
+        # ↓↓↓ resize for consistency
         max_dim = 1400
         w, h = image.size
         if max(w, h) > max_dim:
             scale = max_dim / max(w, h)
-            image = image.resize((int(w*scale), int(h*scale)), Image.Resampling.LANCZOS)
+            image = image.resize((int(w * scale), int(h * scale)), Image.Resampling.LANCZOS)
             w, h = image.size
 
+        # --- NEW: Basic Aadhaar visual signals ---
         aspect_ratio = w / h if h else 0
-        aspect_ok = 1.05 <= aspect_ratio <= 2.8
-        min_dim = min(w, h)
-        size_ok = min_dim >= 140
+        aspect_ok = 1.1 <= aspect_ratio <= 2.9      # Aadhaar landscape ratio
+        size_ok = min(w, h) >= 160                  # prevent tiny images
 
-        keywords = ['aadhaar', 'aadhar', 'uidai', 'unique identification authority', 'government of india', 'dob', 'date of birth', 'male', 'female']
+        # Check for tri-color band (very important Aadhaar cue)
+        np_img = np.array(image)
+        avg_top = np.mean(np_img[:80, :, :], axis=(0,1))  # top area
+        orange_hint = avg_top[0] > avg_top[1] and avg_top[1] > avg_top[2] * 0.6
+
+        # Try OCR (optional)
+        keywords_found = 0
+        number_found = 0
+        text_snippet = ""
 
         if EASYOCR_AVAILABLE:
             text = easyocr_image_to_text(image)
-            keyword_matches = sum(1 for k in keywords if k in text)
-            aadhaar_pattern = re.findall(r'\b\d{4}\s?\d{4}\s?\d{4}\b', text)
+            text_snippet = text[:250]
+
+            # OCR may fail on Render → treat gracefully
+            keywords = ['aadhaar', 'aadhar', 'uidai', 'government of india', 'dob', 'date of birth', 'male', 'female']
+            keywords_found = sum(1 for k in keywords if k in text)
+
+            number_found = len(re.findall(r"\b\d{4}\s?\d{4}\s?\d{4}\b", text))
         else:
             text = ""
-            keyword_matches = 0
-            aadhaar_pattern = []
 
-        # scoring
+        # --- FIXED SCORING LOGIC ---
         confidence = 0
-        if keyword_matches >= 2:
-            confidence += 45
-        elif keyword_matches == 1:
-            confidence += 20
-        if aadhaar_pattern:
-            confidence += 30
-        if aspect_ok:
-            confidence += 15
-        if size_ok:
-            confidence += 15
+
+        # strong visual signals
+        if aspect_ok: confidence += 35
+        if size_ok:   confidence += 20
+        if orange_hint: confidence += 20
+
+        # OCR helps but is optional
+        confidence += min(keywords_found * 15, 30)
+        confidence += 25 if number_found > 0 else 0
 
         confidence = min(100, confidence)
-        return confidence >= 45, int(confidence), {
-            "keywords_found": keyword_matches,
-            "aadhaar_numbers_found": len(aadhaar_pattern),
+
+        # FINAL FIXED DECISION:
+        is_aadhaar = confidence >= 40      # LOWERED THRESHOLD
+
+        return is_aadhaar, confidence, {
+            "keywords_found": keywords_found,
+            "aadhaar_numbers_found": number_found,
             "aspect_ratio_valid": aspect_ok,
             "size_valid": size_ok,
-            "detected_text_snippet": text[:250] if text else ""
+            "color_band_detected": bool(orange_hint),
+            "detected_text_snippet": text_snippet,
         }
+
     except Exception as e:
         return False, 0, {"error": str(e)}
 
