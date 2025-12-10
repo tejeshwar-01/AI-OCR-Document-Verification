@@ -11,10 +11,14 @@ ENV MPLCONFIGDIR=/tmp/matplotlib
 RUN apt-get update && apt-get install -y \
     tesseract-ocr \
     tesseract-ocr-eng \
+    tesseract-ocr-hin \
+    tesseract-ocr-tam \
     libtesseract-dev \
     libzbar0 \
     libgl1 \
     ffmpeg \
+    fonts-lohit-tamil \
+    fonts-lohit-devanagari \
     && rm -rf /var/lib/apt/lists/*
 
 # ----------------------------------------------------
@@ -45,7 +49,7 @@ ENV PYTHONUNBUFFERED=1
 EXPOSE 8000
 
 # ----------------------------------------------------
-# 7. Correct Gunicorn CMD (NO indentation errors)
+# 7. Correct Gunicorn CMD
 # ----------------------------------------------------
 CMD ["gunicorn", "app:app", \
 "--bind=0.0.0.0:8000", \
