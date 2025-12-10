@@ -1,12 +1,12 @@
 FROM python:3.10-slim
 
 # ----------------------------------------------------
-# 1. Prevent Matplotlib from building font cache
+# 1. Prevent Matplotlib from building heavy font cache
 # ----------------------------------------------------
 ENV MPLCONFIGDIR=/tmp/matplotlib
 
 # ----------------------------------------------------
-# 2. Install system dependencies (FULL TESSERACT + OPENGL)
+# 2. Install system dependencies for OCR + CV
 # ----------------------------------------------------
 RUN apt-get update && apt-get install -y \
     tesseract-ocr \
@@ -18,7 +18,7 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # ----------------------------------------------------
-# 3. App directory
+# 3. Set working directory
 # ----------------------------------------------------
 WORKDIR /app
 
@@ -28,31 +28,27 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy project files
+# ----------------------------------------------------
+# 5. Copy project files
+# ----------------------------------------------------
 COPY . .
 
 # ----------------------------------------------------
-# 5. Environment variables
+# 6. Environment configuration
 # ----------------------------------------------------
 ENV FLASK_ENV=production
 ENV GUNICORN_WORKERS=1
+ENV GUNICORN_TIMEOUT=300
+ENV PORT=8000
 ENV PYTHONUNBUFFERED=1
 
-# Increase Gunicorn timeout for OCR+YOLO
-ENV GUNICORN_TIMEOUT=300
-
-# ----------------------------------------------------
-# 6. Expose port
-# ----------------------------------------------------
-ENV PORT=8000
 EXPOSE 8000
 
 # ----------------------------------------------------
-# 7. Run Gunicorn with safe production settings
+# 7. Correct Gunicorn CMD (NO indentation errors)
 # ----------------------------------------------------
-CMD ["gunicorn",
-     "--bind", "0.0.0.0:8000",
-     "--workers", "1",
-     "--timeout", "300",
-     "--log-level", "debug",
-     "app:app"]
+CMD ["gunicorn", "app:app", \
+"--bind=0.0.0.0:8000", \
+"--workers=1", \
+"--timeout=300", \
+"--log-level=debug"]
