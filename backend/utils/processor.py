@@ -4,12 +4,16 @@ import io
 import re
 import zipfile
 import datetime
-import traceback
 import cv2
 import numpy as np
 from PIL import Image, ImageDraw
 
-# Project utils (assume these exist and are correct)
+# 🚨 FORCE DISABLE YOLO FOR RENDER FREE TIER
+YOLO_AVAILABLE = False
+
+# -------------------------------------------------------
+# IMPORT RULES / OCR HELPERS
+# -------------------------------------------------------
 from backend.utils.verification_rules import (
     validate_aadhaar_number,
     validate_name,
@@ -17,20 +21,17 @@ from backend.utils.verification_rules import (
     validate_dob,
     correct_common_ocr_errors,
 )
-from backend.utils.ocr_utils import preprocess_for_ocr, preprocess_for_ocr_full
 
-# ---------- Dependency flags ----------
+from backend.utils.ocr_utils import preprocess_for_ocr
+
+# -------------------------------------------------------
+# OPTIONAL DEPENDENCIES
+# -------------------------------------------------------
 try:
     import easyocr
     EASYOCR_AVAILABLE = True
 except Exception:
     EASYOCR_AVAILABLE = False
-
-try:
-    from ultralytics import YOLO
-    YOLO_AVAILABLE = True
-except Exception:
-    YOLO_AVAILABLE = False
 
 try:
     from pyzbar.pyzbar import decode as pyzbar_decode
@@ -40,418 +41,294 @@ try:
 except Exception:
     PYAADHAAR_AVAILABLE = False
 
-# ---------- EasyOCR reader (cached) ----------
+# -------------------------------------------------------
+# EASY OCR INITIALIZATION
+# -------------------------------------------------------
 _EASYREADER = None
-def get_easyocr_reader(lang_list=['en'], gpu=False):
+def get_easyocr_reader():
     global _EASYREADER
     if not EASYOCR_AVAILABLE:
         return None
     if _EASYREADER is None:
         try:
-            _EASYREADER = easyocr.Reader(lang_list, gpu=gpu)
-        except Exception:
-            # Try CPU fallback
-            _EASYREADER = easyocr.Reader(lang_list, gpu=False)
+            _EASYREADER = easyocr.Reader(["en"], gpu=False)
+        except:
+            _EASYREADER = None
     return _EASYREADER
 
-# ---------- YOLO model caching ----------
+
+# -------------------------------------------------------
+# YOLO LOAD (DISABLED)
+# -------------------------------------------------------
+def load_models(device="cpu"):
+    """Disabled on Render Free Tier"""
+    return
+
+
 CUSTOM_MODEL = None
 FACE_MODEL = None
-def load_models(device="cpu"):
-    global CUSTOM_MODEL, FACE_MODEL
-    if not YOLO_AVAILABLE:
-        return
-    try:
-        if CUSTOM_MODEL is None:
-            model_path = os.environ.get("MODEL_PATH", os.path.join("backend", "models", "best.pt"))
-            CUSTOM_MODEL = YOLO(model_path)
-            CUSTOM_MODEL.to(device)
-        if FACE_MODEL is None:
-            face_path = os.environ.get("FACE_MODEL_PATH", os.path.join("backend", "models", "yolov8n.pt"))
-            FACE_MODEL = YOLO(face_path)
-            FACE_MODEL.to(device)
-    except Exception as e:
-        print("⚠️ YOLO load error:", e)
-        # leave models None on failure
 
-# ---------- Helper: OCR full-image (EasyOCR) ----------
+
+# -------------------------------------------------------
+# OCR — FULL IMAGE
+# -------------------------------------------------------
 def easyocr_image_to_text(pil_image):
-    """
-    Returns a lowercased combined text string detected by EasyOCR for the whole image.
-    """
     if not EASYOCR_AVAILABLE:
         return ""
     try:
         reader = get_easyocr_reader()
-        # EasyOCR expects numpy array in RGB
+        if reader is None:
+            return ""
         arr = np.array(pil_image.convert("RGB"))
-        # reader.readtext returns list of (bbox, text, prob)
         results = reader.readtext(arr, detail=1)
-        texts = [t[1] if isinstance(t, (list, tuple)) and len(t) > 1 else str(t) for t in results]
-        combined = " ".join(texts)
-        return combined.lower()
-    except Exception as e:
-        print("⚠️ easyocr_image_to_text failed:", e)
+        text_list = [r[1] for r in results]
+        return " ".join(text_list).lower()
+    except:
         return ""
 
-# ---------- Helper: OCR crop (EasyOCR) ----------
+
+# -------------------------------------------------------
+# OCR — CROP
+# -------------------------------------------------------
 def easyocr_crop_to_text(crop_pil):
     if not EASYOCR_AVAILABLE:
         return ""
     try:
         reader = get_easyocr_reader()
+        if reader is None:
+            return ""
         arr = np.array(crop_pil.convert("RGB"))
-        res = reader.readtext(arr, detail=0)  # detail=0 returns list of strings
-        if isinstance(res, list):
-            return " ".join(res).strip()
-        return str(res).strip()
-    except Exception as e:
-        # fallback to empty
+        results = reader.readtext(arr, detail=0)
+        return " ".join(results) if isinstance(results, list) else str(results)
+    except:
         return ""
 
-# ---------- QR decode ----------
+
+# -------------------------------------------------------
+# QR DECODING
+# -------------------------------------------------------
 def decode_secure_qr(image_np_bgr):
     if not PYAADHAAR_AVAILABLE:
-        return {"error": "QR decoding disabled - dependencies not available"}
+        return {"error": "QR decoding disabled"}
     try:
         gray = cv2.cvtColor(image_np_bgr, cv2.COLOR_BGR2GRAY)
-        code = pyzbar_decode(gray)
-        if not code:
-            return {"error": "QR Code not found or could not be read"}
-        qrData = code[0].data
-        if isSecureQr(qrData):
-            secure_qr = AadhaarSecureQr(int(qrData))
-            decoded_data = secure_qr.decodeddata()
-            return dict(decoded_data) if hasattr(decoded_data, '__dict__') else decoded_data
-        else:
-            return {"error": "QR code is not a valid Secure Aadhaar QR."}
+        codes = pyzbar_decode(gray)
+        if not codes:
+            return {"error": "No QR detected"}
+        raw = codes[0].data
+        if isSecureQr(raw):
+            secure = AadhaarSecureQr(int(raw))
+            data = secure.decodeddata()
+            return dict(data)
+        return {"error": "Not a secure Aadhaar QR"}
     except Exception as e:
-        return {"error": f"QR decoding failed: {str(e)}"}
+        return {"error": f"QR error: {str(e)}"}
 
-# ---------- Aadhaar image heuristic ----------
+
+# -------------------------------------------------------
+# FIXED — Aadhaar Image Heuristic
+# -------------------------------------------------------
 def is_aadhaar_image(image_bytes):
     """
-    FIXED VERSION:
-    Aadhaar detection no longer requires OCR.
-    OCR is used only to BOOST confidence, not to determine Aadhaar.
-    This prevents false NOT_AADHAAR results.
+    Improved Aadhaar detection:
+    - Does NOT depend on OCR
+    - Uses aspect ratio + size + saffron band + OCR fallback
     """
-
     try:
         image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
 
-        # ↓↓↓ resize for consistency
-        max_dim = 1400
         w, h = image.size
-        if max(w, h) > max_dim:
-            scale = max_dim / max(w, h)
-            image = image.resize((int(w * scale), int(h * scale)), Image.Resampling.LANCZOS)
-            w, h = image.size
+        aspect = w / h if h else 0
+        aspect_ok = 1.1 <= aspect <= 2.9
+        size_ok = min(w, h) >= 160
 
-        # --- NEW: Basic Aadhaar visual signals ---
-        aspect_ratio = w / h if h else 0
-        aspect_ok = 1.1 <= aspect_ratio <= 2.9      # Aadhaar landscape ratio
-        size_ok = min(w, h) >= 160                  # prevent tiny images
+        # detect saffron color band top 80px
+        npimg = np.array(image)
+        top = npimg[:80, :, :]
+        avg = np.mean(top, axis=(0, 1))
+        orange = avg[0] > avg[1] > avg[2] * 0.7
 
-        # Check for tri-color band (very important Aadhaar cue)
-        np_img = np.array(image)
-        avg_top = np.mean(np_img[:80, :, :], axis=(0,1))  # top area
-        orange_hint = avg_top[0] > avg_top[1] and avg_top[1] > avg_top[2] * 0.6
-
-        # Try OCR (optional)
-        keywords_found = 0
-        number_found = 0
+        # OCR optional
+        keywords = 0
+        aadhaar_numbers = 0
         text_snippet = ""
 
         if EASYOCR_AVAILABLE:
             text = easyocr_image_to_text(image)
             text_snippet = text[:250]
 
-            # OCR may fail on Render → treat gracefully
-            keywords = ['aadhaar', 'aadhar', 'uidai', 'government of india', 'dob', 'date of birth', 'male', 'female']
-            keywords_found = sum(1 for k in keywords if k in text)
+            KEY_LIST = ["aadhaar", "aadhar", "uidai", "government", "dob", "male", "female"]
+            keywords = sum(1 for k in KEY_LIST if k in text)
+            aadhaar_numbers = len(re.findall(r"\b\d{4}\s?\d{4}\s?\d{4}\b", text))
 
-            number_found = len(re.findall(r"\b\d{4}\s?\d{4}\s?\d{4}\b", text))
-        else:
-            text = ""
+        # Score
+        score = 0
+        if aspect_ok: score += 35
+        if size_ok:   score += 20
+        if orange:    score += 20
+        score += min(keywords * 15, 30)
+        score += 25 if aadhaar_numbers else 0
+        score = min(score, 100)
 
-        # --- FIXED SCORING LOGIC ---
-        confidence = 0
-
-        # strong visual signals
-        if aspect_ok: confidence += 35
-        if size_ok:   confidence += 20
-        if orange_hint: confidence += 20
-
-        # OCR helps but is optional
-        confidence += min(keywords_found * 15, 30)
-        confidence += 25 if number_found > 0 else 0
-
-        confidence = min(100, confidence)
-
-        # FINAL FIXED DECISION:
-        is_aadhaar = confidence >= 40      # LOWERED THRESHOLD
-
-        return is_aadhaar, confidence, {
-            "keywords_found": keywords_found,
-            "aadhaar_numbers_found": number_found,
+        return score >= 40, score, {
             "aspect_ratio_valid": aspect_ok,
             "size_valid": size_ok,
-            "color_band_detected": bool(orange_hint),
+            "color_band_detected": orange,
+            "keywords_found": keywords,
+            "aadhaar_numbers_found": aadhaar_numbers,
             "detected_text_snippet": text_snippet,
         }
 
     except Exception as e:
         return False, 0, {"error": str(e)}
 
-# ---------- OCR field extraction (crop) ----------
-def ocr_text_for_label(crop_pil, label):
-    """
-    Returns text string for a crop, using EasyOCR if available, otherwise empty.
-    Label parameter kept for compatibility with whitelist config.
-    """
-    if EASYOCR_AVAILABLE:
-        return easyocr_crop_to_text(preprocess_for_ocr(crop_pil))
-    else:
-        return ""
 
-# ---------- Main processor (single image) ----------
+# -------------------------------------------------------
+# MAIN — SINGLE IMAGE PROCESSING
+# -------------------------------------------------------
 def process_single_image_bytes(front_bytes, back_bytes=None, do_qr_check=False, device="cpu"):
-    """
-    Unified processing function: uses EasyOCR, YOLO (if available), QR (if available).
-    Returns JSON-serializable dict.
-    """
     ts = datetime.datetime.now().isoformat()
 
-    # 1) Aadhaar card check
-    is_aadhaar, aadhaar_confidence, aadhaar_details = is_aadhaar_image(front_bytes)
+    # STEP 1 — Aadhaar detection
+    is_aadhar, conf, details = is_aadhaar_image(front_bytes)
 
-    if not is_aadhaar:
+    if not is_aadhar:
         return {
             "error": "NOT_AADHAAR",
-            "message": "The uploaded image does not appear to be an Aadhaar card",
-            "aadhaar_verification": aadhaar_details,
-            "confidence_score": aadhaar_confidence,
+            "message": "Image does not appear to be Aadhaar",
+            "confidence_score": conf,
+            "aadhaar_verification": details,
             "timestamp": ts,
             "assessment": "INVALID_INPUT"
         }
 
-    # 2) Load models if available
-    try:
-        load_models(device)
-    except Exception as e:
-        # continue even if model loading fails
-        print("⚠️ load_models issue:", e)
-
-    # Convert bytes to PIL and numpy
-    front_image_pil = Image.open(io.BytesIO(front_bytes)).convert("RGB")
-    img_np = np.array(front_image_pil)
+    # STEP 2 — OCR fallback
+    pil_img = Image.open(io.BytesIO(front_bytes)).convert("RGB")
+    np_img = np.array(pil_img)
 
     results = {
         "timestamp": ts,
         "fraud_score": 0,
+        "assessment": "LOW",
+        "confidence_score": conf,
+        "qr_data": {},
         "indicators": [],
         "ocr_data": {},
-        "qr_data": {},
-        "assessment": "LOW",
-        "confidence_score": aadhaar_confidence,
         "extracted": {},
         "aadhaar_verification": {
             "is_aadhaar_card": True,
-            "confidence_score": aadhaar_confidence,
-            "verification_details": aadhaar_details
+            "confidence_score": conf,
+            "verification_details": details
         }
     }
 
-    # 3) YOLO field detection (if available)
-    if YOLO_AVAILABLE and CUSTOM_MODEL is not None:
-        try:
-            dets = CUSTOM_MODEL(img_np, conf=0.25, verbose=False)[0]
-            if dets.boxes:
-                for box in dets.boxes:
-                    class_id = int(box.cls[0])
-                    label = CUSTOM_MODEL.names[class_id]
-                    coords = box.xyxy[0].cpu().numpy().astype(int)
-                    x1, y1, x2, y2 = coords
-                    crop = front_image_pil.crop((x1, y1, x2, y2))
-                    text = ocr_text_for_label(crop, label)
-                    if text:
-                        results["ocr_data"][label] = text
-        except Exception as e:
-            results["indicators"].append(f"Field detection error: {str(e)}")
-            results["fraud_score"] += 3
+    # FULL OCR
+    if EASYOCR_AVAILABLE:
+        full = easyocr_image_to_text(pil_img)
+        results["ocr_data"]["full_text"] = full
     else:
-        # No YOLO: do a full-image OCR and try to heuristically extract fields
-        if EASYOCR_AVAILABLE:
-            full_text = easyocr_image_to_text(front_image_pil)
-            results["ocr_data"]["full_text"] = full_text
+        full = ""
 
-    # 4) Face detection (if face model available)
-    if YOLO_AVAILABLE and FACE_MODEL is not None:
-        try:
-            face_res = FACE_MODEL(img_np, classes=[0], conf=0.4, verbose=False)[0]
-            if len(face_res.boxes) > 0:
-                results["indicators"].append("✅ LOW: Face detected on card.")
-            else:
-                results["fraud_score"] += 3
-                results["indicators"].append("🔴 HIGH: No face detected on the card.")
-        except Exception as e:
-            results["indicators"].append("⚠️ Face detection failed.")
-    else:
-        results["indicators"].append("⚪ INFO: Face model not available.")
+    # FIELD EXTRACTION
+    name = ""
+    dob = ""
+    gender = ""
+    aadhaar = ""
 
-    # 5) Extract fields from ocr_data heuristically
-    ocr_storage = results["ocr_data"]
-    extracted_name = ""
-    extracted_gender = ""
-    extracted_dob = ""
-    extracted_aadhaar = ""
+    # aadhaar number
+    m = re.search(r"\b(\d{4}\s?\d{4}\s?\d{4})\b", full)
+    if m:
+        aadhaar = m.group(1).replace(" ", "")
 
-    # If YOLO produced labeled fields, use them
-    if ocr_storage:
-        for k, v in ocr_storage.items():
-            lk = k.lower()
-            txt = v.strip()
-            if not extracted_aadhaar and any(x in lk for x in ["aadhaar", "aadhar", "uid", "number", "id"]):
-                extracted_aadhaar = txt
-            if not extracted_name and "name" in lk:
-                extracted_name = txt
-            if not extracted_gender and "gender" in lk:
-                extracted_gender = txt
-            if not extracted_dob and ("dob" in lk or "date" in lk or "birth" in lk):
-                extracted_dob = txt
+    # gender
+    gtext = full.lower()
+    if "male" in gtext:
+        gender = "Male"
+    elif "female" in gtext:
+        gender = "Female"
 
-    # If only full_text exists, try regex extraction
-    if not extracted_aadhaar and "full_text" in ocr_storage:
-        txt = ocr_storage["full_text"]
-        m = re.search(r'\b(\d{4}\s?\d{4}\s?\d{4})\b', txt)
-        if m:
-            extracted_aadhaar = m.group(1)
+    # dob
+    d = re.search(r"\d{2}/\d{2}/\d{4}", full)
+    if d:
+        dob = d.group(0)
 
-        # Name heuristics: find lines with uppercase words and length
-        lines = [l.strip() for l in txt.splitlines() if l.strip()]
-        for ln in lines[:12]:
-            if len(ln) > 3 and ln.isupper() and any(c.isalpha() for c in ln):
-                extracted_name = extracted_name or ln
+    # name heuristic
+    lines = [l.strip() for l in full.splitlines() if l.strip()]
+    for ln in lines[:10]:
+        if ln.isupper() and len(ln) > 3:
+            name = ln
+            break
 
-        # DOB
-        dm = re.search(r'(\d{2}/\d{2}/\d{4})', txt)
-        if dm:
-            extracted_dob = dm.group(1)
-
-        # Gender
-        if "male" in txt.lower():
-            extracted_gender = "Male"
-        elif "female" in txt.lower():
-            extracted_gender = "Female"
-
-    # 6) Clean & correct fields
-    if extracted_aadhaar:
-        extracted_aadhaar = re.sub(r'[^0-9]', '', extracted_aadhaar)
-        extracted_aadhaar = re.sub(r'\s+', '', extracted_aadhaar)
-
-    if extracted_name:
-        extracted_name = correct_common_ocr_errors(extracted_name)
-
-    if extracted_dob:
-        extracted_dob = correct_common_ocr_errors(extracted_dob)
-
-    # 7) Validation
-    if extracted_aadhaar:
-        a_val = validate_aadhaar_number(extracted_aadhaar)
-    else:
-        a_val = "Missing"
-    n_val = validate_name(extracted_name) if extracted_name else "Missing"
-    g_val = validate_gender(extracted_gender) if extracted_gender else "Missing"
-    d_val = validate_dob(extracted_dob) if extracted_dob else "Missing"
-
-    # scoring and indicators
-    if a_val == "Missing":
-        results["fraud_score"] += 3
-        results["indicators"].append("🔴 HIGH: Aadhaar number is missing.")
-    elif "Invalid" in a_val:
-        results["fraud_score"] += 3
-        results["indicators"].append(f"🔴 HIGH: Aadhaar number '{extracted_aadhaar}' is {a_val}.")
-    else:
-        results["indicators"].append(f"✅ LOW: Aadhaar number extracted.")
-
-    if n_val == "Missing":
-        results["fraud_score"] += 1
-        results["indicators"].append("🟡 MEDIUM: Name is missing.")
-    elif "Invalid" in n_val:
-        results["fraud_score"] += 1
-        results["indicators"].append(f"🟡 MEDIUM: Name '{extracted_name}' is {n_val}.")
-    else:
-        results["indicators"].append(f"✅ LOW: Name format valid.")
-
-    if d_val == "Missing":
-        results["fraud_score"] += 1
-        results["indicators"].append("🟡 MEDIUM: DOB is missing.")
-    elif "Invalid" in d_val:
-        results["fraud_score"] += 2
-        results["indicators"].append(f"🔴 HIGH: DOB '{extracted_dob}' is {d_val}.")
-    else:
-        results["indicators"].append(f"✅ LOW: DOB format valid.")
-
-    if g_val == "Missing":
-        results["fraud_score"] += 1
-        results["indicators"].append("🟡 MEDIUM: Gender is missing.")
-    elif "Invalid" in g_val:
-        results["fraud_score"] += 1
-        results["indicators"].append(f"🟡 MEDIUM: Gender '{extracted_gender}' is {g_val}.")
-    else:
-        results["indicators"].append(f"✅ LOW: Gender format valid.")
-
-    # fill extracted
     results["extracted"] = {
-        "name": extracted_name,
-        "dob": extracted_dob,
-        "gender": extracted_gender,
-        "aadhaar": extracted_aadhaar
+        "name": name,
+        "dob": dob,
+        "gender": gender,
+        "aadhaar": aadhaar,
     }
 
-    # 8) QR verification if requested
+    # VALIDATION
+    if not aadhaar:
+        results["fraud_score"] += 3
+        results["indicators"].append("Missing Aadhaar number")
+    else:
+        status = validate_aadhaar_number(aadhaar)
+        if "Invalid" in status:
+            results["fraud_score"] += 3
+            results["indicators"].append("Invalid Aadhaar number")
+        else:
+            results["indicators"].append("Aadhaar number valid")
+
+    # name
+    if not name:
+        results["fraud_score"] += 1
+
+    # dob
+    if dob:
+        if "Invalid" in validate_dob(dob):
+            results["fraud_score"] += 2
+
+    # gender missing
+    if not gender:
+        results["fraud_score"] += 1
+
+    # QR CHECK
     if do_qr_check:
         try:
-            image_bgr = cv2.cvtColor(img_np, cv2.COLOR_RGB2BGR)
-            qr_data = decode_secure_qr(image_bgr)
-            results["qr_data"] = qr_data
-            if "error" not in qr_data:
-                results["indicators"].append("✅ LOW: Secure QR Code decoded successfully.")
-            else:
-                results["indicators"].append(f"⚠️ QR Code: {qr_data.get('error')}")
-        except Exception as e:
-            results["indicators"].append("⚠️ QR decoding error.")
+            qr = decode_secure_qr(cv2.cvtColor(np_img, cv2.COLOR_RGB2BGR))
+            results["qr_data"] = qr
+        except:
+            results["qr_data"] = {"error": "QR decode failed"}
 
-    # 9) Final assessment
-    if results["fraud_score"] >= 7:
-        results["assessment"] = "HIGH"
-    elif results["fraud_score"] >= 3:
-        results["assessment"] = "MODERATE"
-    else:
-        results["assessment"] = "LOW"
+    # FINAL RISK
+    fs = results["fraud_score"]
+    if fs >= 7: results["assessment"] = "HIGH"
+    elif fs >= 3: results["assessment"] = "MODERATE"
 
     return results
 
-# ---------- Batch processing ----------
-def process_zip_bytes(zip_bytes, model_path=None, do_qr_check=False, device="cpu", max_files=None):
-    """
-    Processes images inside a ZIP and returns list of results.
-    """
+
+# -------------------------------------------------------
+# BATCH ZIP PROCESSING
+# -------------------------------------------------------
+def process_zip_bytes(zip_bytes, do_qr_check=False, device="cpu", max_files=None):
     out = []
     try:
-        with zipfile.ZipFile(io.BytesIO(zip_bytes), "r") as z:
-            members = [n for n in z.namelist() if n.lower().endswith((".jpg",".jpeg",".png"))]
+        with zipfile.ZipFile(io.BytesIO(zip_bytes)) as z:
+            imgs = [n for n in z.namelist() if n.lower().endswith((".jpg", ".jpeg", ".png"))]
+
             if max_files:
-                members = members[:int(max_files)]
-            for name in members:
+                imgs = imgs[:max_files]
+
+            for name in imgs:
                 try:
-                    b = z.read(name)
-                    rec = process_single_image_bytes(b, back_bytes=None, do_qr_check=do_qr_check, device=device)
-                    rec["filename"] = name
-                    out.append(rec)
+                    data = z.read(name)
+                    r = process_single_image_bytes(data, None, do_qr_check, device)
+                    r["filename"] = name
+                    out.append(r)
                 except Exception as e:
                     out.append({"filename": name, "error": str(e)})
+
     except Exception as e:
         out.append({"error": str(e)})
+
     return out
